@@ -1,0 +1,10 @@
+Imperialism II - Patched/
+
+# Visual Studio / .NET build outputs
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.vscode/
+
