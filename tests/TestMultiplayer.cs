@@ -1,0 +1,720 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
+
+internal static class TestMultiplayer
+{
+    private const int DP_OK = 0;
+    private const int DPERR_BUFFERTOOSMALL = unchecked((int)0x8877001E);
+    private const int DPERR_NOMESSAGES = unchecked((int)0x887700BE);
+
+    private static readonly Guid CLSID_DirectPlay = new Guid("d1eb6d20-8923-11d0-9d97-00a0c90a43cb");
+    private static readonly Guid IID_IDirectPlay4A = new Guid("0ab1c531-4745-11d1-a7a1-0000f803abfc");
+    private static readonly Guid CLSID_DirectPlayLobby = new Guid("2fe8f810-b2a5-11d0-a787-0000f803abfc");
+    private static readonly Guid IID_IDirectPlayLobby3A = new Guid("2db72491-652c-11d1-a7a8-0000f803abfc");
+    private static readonly Guid DPSPGUID_TCPIP = new Guid("36e95ee0-8577-11cf-960c-0080c7534e82");
+    private static readonly Guid DPAID_ServiceProvider = new Guid("07d916c0-e0af-11cf-9c4e-00a0c905425e");
+    private static readonly Guid DPAID_INet = new Guid("c4a54da0-e0af-11cf-9c4e-00a0c905425e");
+    private static readonly Guid IMP2_APP_GUID = new Guid("55667788-1122-3344-99aa-bbccddeeff00");
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Ansi)]
+    private static extern IntPtr LoadLibraryA(string path);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Ansi)]
+    private static extern IntPtr GetModuleHandleA(string name);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GetProcAddress(IntPtr hMod, IntPtr ordinal);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Ansi)]
+    private static extern IntPtr GetProcAddress(IntPtr hMod, string name);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr VirtualAlloc(IntPtr lpAddress, UIntPtr dwSize, uint flAllocationType, uint flProtect);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool VirtualFree(IntPtr lpAddress, UIntPtr dwSize, uint dwFreeType);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int DPEnumA_Del(IntPtr cb, IntPtr ctx);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int DPEnumCb(IntPtr guidSp, IntPtr spName, uint maj, uint min, IntPtr ctx);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int CoCreate_Del(ref Guid rclsid, IntPtr punk, uint ctx, ref Guid riid, out IntPtr ppv);
+
+    // Raw COM vtable delegates matching Imperialism II.exe exact byte offsets
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate uint Release_Del(IntPtr self); // +0x08
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int Close_Del(IntPtr self); // +0x10
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int CreatePlayer_Del(IntPtr self, out uint id, IntPtr dpName, IntPtr hEv, IntPtr data, uint size, uint flags); // +0x18
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int DestroyPlayer_Del(IntPtr self, uint id); // +0x24
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int EnumPlayers_Del(IntPtr self, IntPtr guidInst, IntPtr cb, IntPtr ctx, uint flags); // +0x30
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int EnumPlayersCb(uint dpId, uint playerType, IntPtr dpName, uint flags, IntPtr ctx);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int EnumSessions_Del(IntPtr self, IntPtr lpsd, uint timeout, IntPtr cb, IntPtr ctx, uint flags); // +0x34
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int EnumSessionsCb(IntPtr lpsd, ref uint timeout, uint flags, IntPtr ctx);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int GetPlayerAddress_Del(IntPtr self, uint id, IntPtr addr, ref int size); // +0x48
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int GetPlayerData_Del(IntPtr self, uint id, IntPtr data, ref int size, uint flags); // +0x50
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int GetSessionDesc_Del(IntPtr self, IntPtr data, ref int size); // +0x58
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int Open_Del(IntPtr self, IntPtr lpsd, uint flags); // +0x60
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int Receive_Del(IntPtr self, out uint idFrom, out uint idTo, uint flags, IntPtr data, ref int size); // +0x64
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int Send_Del(IntPtr self, uint idFrom, uint idTo, uint flags, IntPtr data, uint size); // +0x68
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int SetPlayerData_Del(IntPtr self, uint id, IntPtr data, uint size, uint flags); // +0x74
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int SetSessionDesc_Del(IntPtr self, IntPtr lpsd, uint flags); // +0x7C
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int InitConn_Del(IntPtr self, IntPtr conn, uint flags); // +0x98
+
+    // Lobby vtable delegates
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int EnumAddress_Del(IntPtr self, IntPtr cb, IntPtr addr, uint size, IntPtr ctx); // +0x14
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate int EnumAddrCdeclCb(IntPtr guidType, uint dataSize, IntPtr data, IntPtr ctx);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int CreateCompoundAddr_Del(IntPtr self, IntPtr elems, uint count, IntPtr addr, ref int size); // +0x38
+
+    // Native x86 trampoline arena so every COM vtable call & C++ callback goes through genuine x86 machine code
+    private static IntPtr s_trampArena;
+    private static int s_trampPos;
+    private static readonly Dictionary<IntPtr, IntPtr> s_trampCache = new Dictionary<IntPtr, IntPtr>();
+    private static readonly List<Delegate> s_pinnedCallbacks = new List<Delegate>();
+
+    private static IntPtr NativeWrap(IntPtr target)
+    {
+        IntPtr cached;
+        if (s_trampCache.TryGetValue(target, out cached)) return cached;
+        if (s_trampArena == IntPtr.Zero)
+            s_trampArena = VirtualAlloc(IntPtr.Zero, new UIntPtr(65536), 0x3000, 0x40);
+        IntPtr slot = new IntPtr(s_trampArena.ToInt64() + s_trampPos);
+        s_trampPos += 8;
+        // mov eax, <target>; jmp eax (7 bytes)
+        Marshal.WriteByte(slot, 0, 0xB8);
+        Marshal.WriteInt32(slot, 1, target.ToInt32());
+        Marshal.WriteByte(slot, 5, 0xFF);
+        Marshal.WriteByte(slot, 6, 0xE0);
+        s_trampCache[target] = slot;
+        return slot;
+    }
+
+    private static IntPtr NativeCb(Delegate cb)
+    {
+        s_pinnedCallbacks.Add(cb);
+        return NativeWrap(Marshal.GetFunctionPointerForDelegate(cb));
+    }
+
+    private static T Vt<T>(IntPtr comObj, int byteOffset) where T : class
+    {
+        IntPtr vt = Marshal.ReadIntPtr(comObj);
+        IntPtr fn = Marshal.ReadIntPtr(vt, byteOffset);
+        return Marshal.GetDelegateForFunctionPointer(NativeWrap(fn), typeof(T)) as T;
+    }
+
+    private static void Check(bool cond, string msg)
+    {
+        if (!cond) throw new Exception("ASSERT FAILED: " + msg);
+    }
+
+    private static byte[] MakeCompoundAddress(IntPtr lobby, string inetStr)
+    {
+        int count = inetStr == null ? 1 : 2;
+        IntPtr elems = Marshal.AllocHGlobal(count * 24);
+        IntPtr spMem = Marshal.AllocHGlobal(16);
+        IntPtr inetMem = inetStr != null ? Marshal.StringToHGlobalAnsi(inetStr) : IntPtr.Zero;
+        try
+        {
+            Marshal.Copy(DPAID_ServiceProvider.ToByteArray(), 0, elems, 16);
+            Marshal.WriteInt32(elems, 16, 16);
+            Marshal.Copy(DPSPGUID_TCPIP.ToByteArray(), 0, spMem, 16);
+            Marshal.WriteIntPtr(elems, 20, spMem);
+
+            if (inetStr != null)
+            {
+                IntPtr e2 = new IntPtr(elems.ToInt64() + 24);
+                Marshal.Copy(DPAID_INet.ToByteArray(), 0, e2, 16);
+                Marshal.WriteInt32(e2, 16, inetStr.Length + 1);
+                Marshal.WriteIntPtr(e2, 20, inetMem);
+            }
+
+            CreateCompoundAddr_Del fn = Vt<CreateCompoundAddr_Del>(lobby, 0x38);
+            int sz = 0;
+            int hr1 = fn(lobby, elems, (uint)count, IntPtr.Zero, ref sz);
+            Check(hr1 == DPERR_BUFFERTOOSMALL && sz > 24, "CreateCompoundAddress size pass");
+
+            IntPtr outBuf = Marshal.AllocHGlobal(sz);
+            try
+            {
+                int hr2 = fn(lobby, elems, (uint)count, outBuf, ref sz);
+                Check(hr2 == DP_OK, "CreateCompoundAddress write pass");
+                byte[] res = new byte[sz];
+                Marshal.Copy(outBuf, res, 0, sz);
+                return res;
+            }
+            finally { Marshal.FreeHGlobal(outBuf); }
+        }
+        finally
+        {
+            if (inetMem != IntPtr.Zero) Marshal.FreeHGlobal(inetMem);
+            Marshal.FreeHGlobal(spMem);
+            Marshal.FreeHGlobal(elems);
+        }
+    }
+
+    private static void InitConn(IntPtr dp, IntPtr lobby, string inet)
+    {
+        byte[] ca = MakeCompoundAddress(lobby, inet);
+        IntPtr buf = Marshal.AllocHGlobal(ca.Length);
+        try
+        {
+            Marshal.Copy(ca, 0, buf, ca.Length);
+            int hr = Vt<InitConn_Del>(dp, 0x98)(dp, buf, 0);
+            Check(hr == DP_OK, "InitializeConnection(" + (inet ?? "<host>") + ")");
+        }
+        finally { Marshal.FreeHGlobal(buf); }
+    }
+
+    private static Guid HostOpen(IntPtr dp, string sessionName)
+    {
+        IntPtr sd = Marshal.AllocHGlobal(80);
+        IntPtr namePtr = Marshal.StringToHGlobalAnsi(sessionName);
+        try
+        {
+            for (int i = 0; i < 80; i += 4) Marshal.WriteInt32(sd, i, 0);
+            Marshal.WriteInt32(sd, 0x00, 80);
+            Marshal.WriteInt32(sd, 0x04, 0xA040);
+            Marshal.Copy(IMP2_APP_GUID.ToByteArray(), 0, new IntPtr(sd.ToInt64() + 0x18), 16);
+            Marshal.WriteInt32(sd, 0x28, 6);
+            Marshal.WriteIntPtr(sd, 0x30, namePtr);
+
+            int hr = Vt<Open_Del>(dp, 0x60)(dp, sd, 2); // DPOPEN_CREATE
+            Check(hr == DP_OK, "Host Open(DPOPEN_CREATE)");
+
+            byte[] instBytes = new byte[16];
+            Marshal.Copy(new IntPtr(sd.ToInt64() + 0x08), instBytes, 0, 16);
+            Guid g = new Guid(instBytes);
+            Check(g != Guid.Empty, "Host guidInstance populated");
+            return g;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(namePtr);
+            Marshal.FreeHGlobal(sd);
+        }
+    }
+
+    private static List<KeyValuePair<Guid, string>> EnumGames(IntPtr dp, uint timeoutMs)
+    {
+        List<KeyValuePair<Guid, string>> list = new List<KeyValuePair<Guid, string>>();
+        IntPtr sd = Marshal.AllocHGlobal(80);
+        try
+        {
+            for (int i = 0; i < 80; i += 4) Marshal.WriteInt32(sd, i, 0);
+            Marshal.WriteInt32(sd, 0x00, 80);
+            Marshal.Copy(IMP2_APP_GUID.ToByteArray(), 0, new IntPtr(sd.ToInt64() + 0x18), 16);
+
+            EnumSessionsCb cb = delegate(IntPtr foundSd, ref uint to, uint flags, IntPtr ctx)
+            {
+                byte[] gb = new byte[16];
+                Marshal.Copy(new IntPtr(foundSd.ToInt64() + 0x08), gb, 0, 16);
+                IntPtr np = Marshal.ReadIntPtr(foundSd, 0x30);
+                string nm = Marshal.PtrToStringAnsi(np);
+                list.Add(new KeyValuePair<Guid, string>(new Guid(gb), nm));
+                return 1;
+            };
+            int hr = Vt<EnumSessions_Del>(dp, 0x34)(dp, sd, timeoutMs, NativeCb(cb), IntPtr.Zero, 1);
+            Check(hr == DP_OK, "EnumSessions");
+        }
+        finally { Marshal.FreeHGlobal(sd); }
+        return list;
+    }
+
+    private static void JoinOpen(IntPtr dp, Guid guidInstance)
+    {
+        IntPtr sd = Marshal.AllocHGlobal(80);
+        try
+        {
+            for (int i = 0; i < 80; i += 4) Marshal.WriteInt32(sd, i, 0);
+            Marshal.WriteInt32(sd, 0x00, 80);
+            Marshal.Copy(guidInstance.ToByteArray(), 0, new IntPtr(sd.ToInt64() + 0x08), 16);
+            int hr = Vt<Open_Del>(dp, 0x60)(dp, sd, 1); // DPOPEN_JOIN
+            Check(hr == DP_OK, "Client Open(DPOPEN_JOIN)");
+        }
+        finally { Marshal.FreeHGlobal(sd); }
+    }
+
+    private static uint MakePlayer(IntPtr dp, string name)
+    {
+        IntPtr dpn = Marshal.AllocHGlobal(16);
+        IntPtr np = Marshal.StringToHGlobalAnsi(name);
+        try
+        {
+            Marshal.WriteInt32(dpn, 0, 16);
+            Marshal.WriteInt32(dpn, 4, 0);
+            Marshal.WriteIntPtr(dpn, 8, np);
+            Marshal.WriteIntPtr(dpn, 12, IntPtr.Zero);
+            uint pid;
+            int hr = Vt<CreatePlayer_Del>(dp, 0x18)(dp, out pid, dpn, IntPtr.Zero, IntPtr.Zero, 0, 0);
+            Check(hr == DP_OK && pid != 0, "CreatePlayer(" + name + ")");
+            return pid;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(np);
+            Marshal.FreeHGlobal(dpn);
+        }
+    }
+
+    private static byte[] TwoPassReceive(IntPtr dp, out uint idFrom, out uint idTo)
+    {
+        Receive_Del fn = Vt<Receive_Del>(dp, 0x64);
+        int sz = 0;
+        int hr1 = fn(dp, out idFrom, out idTo, 1, IntPtr.Zero, ref sz);
+        if (hr1 == DPERR_NOMESSAGES) return null;
+        Check(hr1 == DPERR_BUFFERTOOSMALL, "Receive pass 1 expected DPERR_BUFFERTOOSMALL, got 0x" + hr1.ToString("X"));
+
+        IntPtr buf = Marshal.AllocHGlobal(Math.Max(1, sz));
+        try
+        {
+            int hr2 = fn(dp, out idFrom, out idTo, 1, buf, ref sz);
+            Check(hr2 == DP_OK, "Receive pass 2 expected DP_OK");
+            byte[] res = new byte[sz];
+            if (sz > 0) Marshal.Copy(buf, res, 0, sz);
+            return res;
+        }
+        finally { Marshal.FreeHGlobal(buf); }
+    }
+
+    private static byte[] WaitReceive(IntPtr dp, out uint idFrom, out uint idTo, int maxWaitMs)
+    {
+        int waited = 0;
+        while (waited < maxWaitMs)
+        {
+            byte[] m = TwoPassReceive(dp, out idFrom, out idTo);
+            if (m != null) return m;
+            Thread.Sleep(15);
+            waited += 15;
+        }
+        idFrom = 0; idTo = 0;
+        return null;
+    }
+
+    private static int RunClientWorker(string dllPath, string port)
+    {
+        Environment.SetEnvironmentVariable("IMP2_PORT", port);
+        IntPtr hMod = LoadLibraryA(dllPath);
+        Check(hMod != IntPtr.Zero, "Worker LoadLibraryA");
+        CoCreate_Del coCreate = (CoCreate_Del)Marshal.GetDelegateForFunctionPointer(NativeWrap(GetProcAddress(hMod, "Imp2CoCreateInstance")), typeof(CoCreate_Del));
+        Guid gDp = CLSID_DirectPlay, iDp = IID_IDirectPlay4A, gLob = CLSID_DirectPlayLobby, iLob = IID_IDirectPlayLobby3A;
+        IntPtr dp, lob;
+        Check(coCreate(ref gDp, IntPtr.Zero, 1, ref iDp, out dp) == DP_OK, "Worker dp");
+        Check(coCreate(ref gLob, IntPtr.Zero, 1, ref iLob, out lob) == DP_OK, "Worker lob");
+
+        InitConn(dp, lob, "127.0.0.1:" + port);
+        var games = EnumGames(dp, 3000);
+        Check(games.Count == 1, "Worker EnumGames found 1 session");
+        JoinOpen(dp, games[0].Key);
+        uint myPid = MakePlayer(dp, "Prussia");
+        Check(myPid == 2, "Worker DPID == 2");
+
+        byte[] hello = Encoding.ASCII.GetBytes("HELLO_FROM_CHILD_PROCESS");
+        IntPtr pHello = Marshal.AllocHGlobal(hello.Length);
+        Marshal.Copy(hello, 0, pHello, hello.Length);
+        Check(Vt<Send_Del>(dp, 0x68)(dp, myPid, 1, 1, pHello, (uint)hello.Length) == DP_OK, "Worker Send");
+        Marshal.FreeHGlobal(pHello);
+
+        uint fm, to;
+        byte[] reply = WaitReceive(dp, out fm, out to, 3000);
+        Check(reply != null && fm == 1 && Encoding.ASCII.GetString(reply) == "WELCOME_FROM_HOST_PROCESS", "Worker received Host reply");
+
+        Vt<Close_Del>(dp, 0x10)(dp);
+        Vt<Release_Del>(dp, 0x08)(dp);
+        Vt<Release_Del>(lob, 0x08)(lob);
+        return 0;
+    }
+
+    private static int FallbackCoCreateStub(ref Guid rclsid, IntPtr punk, uint ctx, ref Guid riid, out IntPtr ppv)
+    {
+        ppv = new IntPtr(0x12345678);
+        return 0x112233;
+    }
+
+    private static void VerifyExeX86Thunk(string exePath)
+    {
+        byte[] exe = System.IO.File.ReadAllBytes(exePath);
+        byte[] thunk = new byte[39];
+        Array.Copy(exe, 0x2E7C60, thunk, 0, 39);
+
+        // Verify exact instruction opcodes & relative jump displacements from ImpII.exe
+        Check(thunk[0] == 0x68 && thunk[5] == 0xFF && thunk[6] == 0x15 &&
+              thunk[11] == 0x85 && thunk[12] == 0xC0 && thunk[13] == 0x74 && thunk[14] == 0x12 &&
+              thunk[15] == 0x68 && thunk[20] == 0x50 && thunk[21] == 0xFF && thunk[22] == 0x15 &&
+              thunk[27] == 0x85 && thunk[28] == 0xC0 && thunk[29] == 0x74 && thunk[30] == 0x02 &&
+              thunk[31] == 0xFF && thunk[32] == 0xE0 && thunk[33] == 0xFF && thunk[34] == 0x25,
+              "ImpII.exe DPlayCoCreateThunk byte signature");
+
+        IntPtr mem = VirtualAlloc(IntPtr.Zero, new UIntPtr(256), 0x3000, 0x40); // MEM_COMMIT|MEM_RESERVE, PAGE_EXECUTE_READWRITE
+        Check(mem != IntPtr.Zero, "VirtualAlloc RWX");
+        CoCreate_Del fallbackDel = new CoCreate_Del(FallbackCoCreateStub);
+        try
+        {
+            IntPtr hK32 = GetModuleHandleA("kernel32.dll");
+            IntPtr fnGmh = GetProcAddress(hK32, "GetModuleHandleA");
+            IntPtr fnGpa = GetProcAddress(hK32, "GetProcAddress");
+            IntPtr fnFb  = Marshal.GetFunctionPointerForDelegate(fallbackDel);
+
+            // Layout inside RWX page:
+            // +0x00: 39-byte thunk
+            // +0x40: IAT slot GetModuleHandleA
+            // +0x44: IAT slot GetProcAddress
+            // +0x48: IAT slot Fallback CoCreateInstance
+            // +0x50: "DPLAYX.dll\0"
+            // +0x60: "Imp2CoCreateInstance\0"
+            Marshal.WriteIntPtr(mem, 0x40, fnGmh);
+            Marshal.WriteIntPtr(mem, 0x44, fnGpa);
+            Marshal.WriteIntPtr(mem, 0x48, fnFb);
+            byte[] sDll = Encoding.ASCII.GetBytes("DPLAYX.dll\0");
+            byte[] sFn  = Encoding.ASCII.GetBytes("Imp2CoCreateInstance\0");
+            Marshal.Copy(sDll, 0, new IntPtr(mem.ToInt64() + 0x50), sDll.Length);
+            Marshal.Copy(sFn,  0, new IntPtr(mem.ToInt64() + 0x60), sFn.Length);
+
+            int baseAddr = mem.ToInt32();
+            Array.Copy(BitConverter.GetBytes(baseAddr + 0x50), 0, thunk, 1, 4);
+            Array.Copy(BitConverter.GetBytes(baseAddr + 0x40), 0, thunk, 7, 4);
+            Array.Copy(BitConverter.GetBytes(baseAddr + 0x60), 0, thunk, 16, 4);
+            Array.Copy(BitConverter.GetBytes(baseAddr + 0x44), 0, thunk, 23, 4);
+            Array.Copy(BitConverter.GetBytes(baseAddr + 0x48), 0, thunk, 35, 4);
+            Marshal.Copy(thunk, 0, mem, thunk.Length);
+
+            CoCreate_Del nativeThunk = (CoCreate_Del)Marshal.GetDelegateForFunctionPointer(mem, typeof(CoCreate_Del));
+            Guid gDp = CLSID_DirectPlay, iDp = IID_IDirectPlay4A;
+            IntPtr dpOut;
+            int hr = nativeThunk(ref gDp, IntPtr.Zero, 1, ref iDp, out dpOut);
+            Check(hr == DP_OK && dpOut != IntPtr.Zero, "Native x86 thunk routed to Imp2CoCreateInstance");
+            Vt<Release_Del>(dpOut, 0x08)(dpOut);
+
+            // Now corrupt module string at +0x50 to verify jz fallback (+0x12) jumps cleanly to [ole32!CoCreateInstance]
+            Marshal.WriteByte(mem, 0x50, (byte)'Z');
+            IntPtr fbOut;
+            int hrFb = nativeThunk(ref gDp, IntPtr.Zero, 1, ref iDp, out fbOut);
+            Check(hrFb == 0x112233 && fbOut == new IntPtr(0x12345678), "Native x86 thunk fallback branch verified");
+            GC.KeepAlive(fallbackDel);
+        }
+        finally
+        {
+            VirtualFree(mem, UIntPtr.Zero, 0x8000);
+        }
+    }
+
+    public static int Main(string[] args)
+    {
+        try
+        {
+            if (args.Length >= 3 && args[0] == "--client-worker")
+            {
+                return RunClientWorker(args[1], args[2]);
+            }
+
+            Environment.SetEnvironmentVariable("IMP2_PORT", "12357");
+            Environment.SetEnvironmentVariable("IMP2_BIND", "All");
+
+            string dllPath = args.Length > 0 ? args[0] : @"C:\Users\ephbu\Documents\GitHub\Imperialism2_Patch\Imperialism II - Patched\dplayx.dll";
+            Console.WriteLine("Loading: " + dllPath);
+            IntPtr hMod = LoadLibraryA(dllPath);
+            Check(hMod != IntPtr.Zero, "LoadLibraryA(dplayx.dll)");
+
+            for (int ord = 1; ord <= 11; ord++)
+            {
+                IntPtr p = GetProcAddress(hMod, new IntPtr(ord));
+                Check(p != IntPtr.Zero, "Export Ordinal #" + ord);
+            }
+            Console.WriteLine("[PASS] Test 1: All 11 Win32 PE exports (#1..#11) verified.");
+
+            DPEnumA_Del dpEnum = (DPEnumA_Del)Marshal.GetDelegateForFunctionPointer(NativeWrap(GetProcAddress(hMod, new IntPtr(2))), typeof(DPEnumA_Del));
+            int enumCount = 0;
+            dpEnum(NativeCb((DPEnumCb)delegate(IntPtr g, IntPtr nm, uint maj, uint min, IntPtr ctx)
+            {
+                enumCount++;
+                Console.WriteLine("  SP: " + Marshal.PtrToStringAnsi(nm));
+                return 1;
+            }), IntPtr.Zero);
+            Check(enumCount == 1, "DirectPlayEnumerateA returned 1 TCP/IP provider");
+
+            CoCreate_Del coCreate = (CoCreate_Del)Marshal.GetDelegateForFunctionPointer(NativeWrap(GetProcAddress(hMod, "Imp2CoCreateInstance")), typeof(CoCreate_Del));
+            IntPtr hostDP, hostLobby, cli1DP, cli1Lobby, cli2DP, cli2Lobby;
+            Guid gDp = CLSID_DirectPlay, iDp = IID_IDirectPlay4A, gLob = CLSID_DirectPlayLobby, iLob = IID_IDirectPlayLobby3A;
+
+            Check(coCreate(ref gDp, IntPtr.Zero, 1, ref iDp, out hostDP) == DP_OK, "Create hostDP");
+            Check(coCreate(ref gLob, IntPtr.Zero, 1, ref iLob, out hostLobby) == DP_OK, "Create hostLobby");
+            Check(coCreate(ref gDp, IntPtr.Zero, 1, ref iDp, out cli1DP) == DP_OK, "Create cli1DP");
+            Check(coCreate(ref gLob, IntPtr.Zero, 1, ref iLob, out cli1Lobby) == DP_OK, "Create cli1Lobby");
+            Check(coCreate(ref gDp, IntPtr.Zero, 1, ref iDp, out cli2DP) == DP_OK, "Create cli2DP");
+            Check(coCreate(ref gLob, IntPtr.Zero, 1, ref iLob, out cli2Lobby) == DP_OK, "Create cli2Lobby");
+
+            // Host session on All Interfaces (0.0.0.0:12357)
+            InitConn(hostDP, hostLobby, null);
+            Guid sessGuid = HostOpen(hostDP, "Age of Exploration MP");
+            uint hostPid = MakePlayer(hostDP, "Britain");
+            Check(hostPid == 1, "Host DPID == 1");
+
+            // Set Host marker (DWORD 1) via SetPlayerData (+0x74)
+            IntPtr oneBuf = Marshal.AllocHGlobal(4);
+            Marshal.WriteInt32(oneBuf, 1);
+            Check(Vt<SetPlayerData_Del>(hostDP, 0x74)(hostDP, hostPid, oneBuf, 4, 2) == DP_OK, "Host SetPlayerData(1)");
+            Marshal.FreeHGlobal(oneBuf);
+
+            // Verify GetPlayerAddress (+0x48) + __cdecl EnumAddress (+0x14) stack safety!
+            int addrSz = 0;
+            Check(Vt<GetPlayerAddress_Del>(hostDP, 0x48)(hostDP, hostPid, IntPtr.Zero, ref addrSz) == DPERR_BUFFERTOOSMALL, "GetPlayerAddress size");
+            IntPtr addrBuf = Marshal.AllocHGlobal(addrSz);
+            Check(Vt<GetPlayerAddress_Del>(hostDP, 0x48)(hostDP, hostPid, addrBuf, ref addrSz) == DP_OK, "GetPlayerAddress data");
+            string loungeIp = null;
+            Vt<EnumAddress_Del>(hostLobby, 0x14)(hostLobby, NativeCb((EnumAddrCdeclCb)delegate(IntPtr gt, uint dsz, IntPtr dp, IntPtr ctx)
+            {
+                byte[] gb = new byte[16];
+                Marshal.Copy(gt, gb, 0, 16);
+                if (new Guid(gb) == DPAID_INet)
+                {
+                    loungeIp = Marshal.PtrToStringAnsi(dp);
+                    return 0;
+                }
+                return 1;
+            }), addrBuf, (uint)addrSz, IntPtr.Zero);
+            Marshal.FreeHGlobal(addrBuf);
+            Check(!string.IsNullOrEmpty(loungeIp), "Host Lounge IP string resolved: " + loungeIp);
+            Console.WriteLine("[PASS] Test 2: Host Lounge IP display (__cdecl EnumAddress safe): '" + loungeIp + "'");
+
+            // Test multi-interface blank-IP broadcast scan ("")
+            InitConn(cli1DP, cli1Lobby, "");
+            var foundAll = EnumGames(cli1DP, 1000);
+            Check(foundAll.Count == 1 && foundAll[0].Key == sessGuid, "Blank-IP scan across all interfaces found Host");
+            Console.WriteLine("[PASS] Test 3a: Blank-IP scan across ALL network interfaces discovered '" + foundAll[0].Value + "'.");
+
+            // Test interface-pinned scan (@127.0.0.1 and active LAN IP if available)
+            InitConn(cli2DP, cli2Lobby, "@127.0.0.1");
+            var foundLoop = EnumGames(cli2DP, 1000);
+            Check(foundLoop.Count == 1 && foundLoop[0].Key == sessGuid, "@127.0.0.1 interface scan found Host");
+
+            string activeLanIp = null;
+            foreach (NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (nic.OperationalStatus != OperationalStatus.Up) continue;
+                foreach (var ua in nic.GetIPProperties().UnicastAddresses)
+                {
+                    if (ua.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(ua.Address))
+                    {
+                        activeLanIp = ua.Address.ToString();
+                        break;
+                    }
+                }
+                if (activeLanIp != null) break;
+            }
+            if (activeLanIp != null)
+            {
+                InitConn(cli2DP, cli2Lobby, "@" + activeLanIp);
+                var foundLan = EnumGames(cli2DP, 1200);
+                Check(foundLan.Count == 1 && foundLan[0].Key == sessGuid, "@" + activeLanIp + " LAN interface scan found Host");
+                Console.WriteLine("[PASS] Test 3b: Specific interface selection (@127.0.0.1 and @" + activeLanIp + ") verified.");
+            }
+            else
+            {
+                Console.WriteLine("[PASS] Test 3b: Specific interface selection (@127.0.0.1) verified.");
+            }
+
+            // Test hostname:port TCP single-port discovery & 3-player Join + IdentifyHost!
+            InitConn(cli1DP, cli1Lobby, "localhost:12357");
+            var foundTcp = EnumGames(cli1DP, 2000);
+            Check(foundTcp.Count == 1 && foundTcp[0].Key == sessGuid, "hostname:port (localhost:12357) TCP discovery");
+            JoinOpen(cli1DP, sessGuid);
+            uint cli1Pid = MakePlayer(cli1DP, "France");
+            Check(cli1Pid == 2, "Client 1 DPID == 2");
+
+            // Replicate IdentifyHost() from WNetMgr.cpp: EnumPlayers(DPENUMPLAYERS_REMOTE=0x10) + GetPlayerData == 1
+            uint detectedHostId = 0;
+            Vt<EnumPlayers_Del>(cli1DP, 0x30)(cli1DP, IntPtr.Zero, NativeCb((EnumPlayersCb)delegate(uint pid, uint ptype, IntPtr nm, uint fl, IntPtr ctx)
+            {
+                IntPtr db = Marshal.AllocHGlobal(4);
+                int dsz = 4;
+                if (Vt<GetPlayerData_Del>(cli1DP, 0x50)(cli1DP, pid, db, ref dsz, 0) == DP_OK && dsz == 4)
+                {
+                    if (Marshal.ReadInt32(db) == 1) detectedHostId = pid;
+                }
+                Marshal.FreeHGlobal(db);
+                return 1;
+            }), IntPtr.Zero, 0x10);
+            Check(detectedHostId == 1, "Client 1 IdentifyHost() found Host DPID == 1");
+
+            // Client 2 joins via 127.0.0.1:12357@Loopback
+            InitConn(cli2DP, cli2Lobby, "127.0.0.1:12357@Loopback");
+            var foundC2 = EnumGames(cli2DP, 2000);
+            Check(foundC2.Count == 1, "Client 2 host:port@iface discovery");
+            JoinOpen(cli2DP, sessGuid);
+            uint cli2Pid = MakePlayer(cli2DP, "Spain");
+            Check(cli2Pid == 3, "Client 2 DPID == 3");
+            Console.WriteLine("[PASS] Test 4: 3-player session (Host + localhost:12357 + 127.0.0.1:12357@Loopback) & IdentifyHost() verified.");
+
+            // Test Broadcast Send (idTo = 0) of 4096-byte campaign state hunk + Unicast Send
+            byte[] bigPayload = new byte[4096];
+            for (int i = 0; i < bigPayload.Length; i++) bigPayload[i] = (byte)((i * 37) & 0xFF);
+            IntPtr pBig = Marshal.AllocHGlobal(bigPayload.Length);
+            Marshal.Copy(bigPayload, 0, pBig, bigPayload.Length);
+            Check(Vt<Send_Del>(hostDP, 0x68)(hostDP, hostPid, 0, 1, pBig, (uint)bigPayload.Length) == DP_OK, "Host broadcast Send");
+            Marshal.FreeHGlobal(pBig);
+
+            uint f1, t1, f2, t2;
+            byte[] r1 = WaitReceive(cli1DP, out f1, out t1, 2000);
+            byte[] r2 = WaitReceive(cli2DP, out f2, out t2, 2000);
+            Check(r1 != null && r1.Length == 4096 && f1 == 1 && t1 == 0, "Client 1 received 4096B broadcast");
+            Check(r2 != null && r2.Length == 4096 && f2 == 1 && t2 == 0 && r2[4095] == bigPayload[4095], "Client 2 received exact 4096B broadcast");
+
+            // Unicast from France (2) -> Britain (1); Spain (3) must NOT receive it
+            byte[] secretTreaty = Encoding.ASCII.GetBytes("ALLIANCE_OFFER_1520");
+            IntPtr pSec = Marshal.AllocHGlobal(secretTreaty.Length);
+            Marshal.Copy(secretTreaty, 0, pSec, secretTreaty.Length);
+            Check(Vt<Send_Del>(cli1DP, 0x68)(cli1DP, cli1Pid, hostPid, 1, pSec, (uint)secretTreaty.Length) == DP_OK, "Client 1 unicast Send");
+            Marshal.FreeHGlobal(pSec);
+
+            uint fh, th, fs, ts;
+            byte[] rh = WaitReceive(hostDP, out fh, out th, 2000);
+            Check(rh != null && Encoding.ASCII.GetString(rh) == "ALLIANCE_OFFER_1520" && fh == 2 && th == 1, "Host received unicast");
+            Check(TwoPassReceive(cli2DP, out fs, out ts) == null, "Client 2 did not receive unicast meant for Host");
+
+            // Test Advertise(false) -> GetSessionDesc + SetSessionDesc (DPSYS_SETSESSIONDESC = 0x0104)
+            int sdescSz = 0;
+            Check(Vt<GetSessionDesc_Del>(hostDP, 0x58)(hostDP, IntPtr.Zero, ref sdescSz) == DPERR_BUFFERTOOSMALL, "GetSessionDesc size");
+            IntPtr sdescBuf = Marshal.AllocHGlobal(sdescSz);
+            Check(Vt<GetSessionDesc_Del>(hostDP, 0x58)(hostDP, sdescBuf, ref sdescSz) == DP_OK, "GetSessionDesc read");
+            int curFlags = Marshal.ReadInt32(sdescBuf, 0x04);
+            Marshal.WriteInt32(sdescBuf, 0x04, curFlags | 0x21); // disable new joins
+            Check(Vt<SetSessionDesc_Del>(hostDP, 0x7C)(hostDP, sdescBuf, 0) == DP_OK, "SetSessionDesc");
+            Marshal.FreeHGlobal(sdescBuf);
+
+            byte[] sysDesc = WaitReceive(cli1DP, out f1, out t1, 2000);
+            Check(sysDesc != null && f1 == 0 && BitConverter.ToUInt32(sysDesc, 0) == 0x0104, "Client 1 received DPSYS_SETSESSIONDESC");
+            Console.WriteLine("[PASS] Test 5: Broadcast, Unicast, Two-Pass Receive, and SetSessionDesc verified.");
+
+            // Test Client 2 disconnect -> DPSYS_DESTROYPLAYERORGROUP (0x0005, playerType=1, dpId=3)
+            Vt<Close_Del>(cli2DP, 0x10)(cli2DP);
+            Vt<Release_Del>(cli2DP, 0x08)(cli2DP);
+            Vt<Release_Del>(cli2Lobby, 0x08)(cli2Lobby);
+
+            byte[] dropMsg = WaitReceive(hostDP, out fh, out th, 2000);
+            Check(dropMsg != null && fh == 0 &&
+                  BitConverter.ToUInt32(dropMsg, 0) == 0x0005 &&
+                  BitConverter.ToUInt32(dropMsg, 4) == 1 &&
+                  BitConverter.ToUInt32(dropMsg, 8) == 3,
+                  "Host received DPMSG_DESTROYPLAYERORGROUP for DPID 3");
+
+            // Drain DPSYS_SETSESSIONDESC & DESTROYPLAYER on cli1, then close Host -> DPSYS_SESSIONLOST (0x0021)
+            WaitReceive(cli1DP, out f1, out t1, 500);
+            Vt<Close_Del>(hostDP, 0x10)(hostDP);
+            Vt<Release_Del>(hostDP, 0x08)(hostDP);
+            Vt<Release_Del>(hostLobby, 0x08)(hostLobby);
+
+            byte[] lostMsg = WaitReceive(cli1DP, out f1, out t1, 2000);
+            while (lostMsg != null && BitConverter.ToUInt32(lostMsg, 0) != 0x0021)
+                lostMsg = WaitReceive(cli1DP, out f1, out t1, 2000);
+            Check(lostMsg != null && f1 == 0 && BitConverter.ToUInt32(lostMsg, 0) == 0x0021, "Client 1 received DPSYS_SESSIONLOST");
+            Vt<Close_Del>(cli1DP, 0x10)(cli1DP);
+            Vt<Release_Del>(cli1DP, 0x08)(cli1DP);
+            Vt<Release_Del>(cli1Lobby, 0x08)(cli1Lobby);
+
+            // Immediate Re-Host on exact same port 12357 without restarting process!
+            IntPtr host2DP, host2Lob, cliReDP, cliReLob;
+            coCreate(ref gDp, IntPtr.Zero, 1, ref iDp, out host2DP);
+            coCreate(ref gLob, IntPtr.Zero, 1, ref iLob, out host2Lob);
+            coCreate(ref gDp, IntPtr.Zero, 1, ref iDp, out cliReDP);
+            coCreate(ref gLob, IntPtr.Zero, 1, ref iLob, out cliReLob);
+
+            InitConn(host2DP, host2Lob, null);
+            Guid sess2 = HostOpen(host2DP, "Second Session No Reboot");
+            MakePlayer(host2DP, "Holland");
+
+            InitConn(cliReDP, cliReLob, "127.0.0.1:12357");
+            var foundRe = EnumGames(cliReDP, 2000);
+            Check(foundRe.Count == 1 && foundRe[0].Key == sess2, "Immediate second session discovered on same port");
+            JoinOpen(cliReDP, sess2);
+            uint rePid = MakePlayer(cliReDP, "Sweden");
+            Check(rePid == 2, "Second session client DPID == 2");
+
+            Vt<Close_Del>(cliReDP, 0x10)(cliReDP);
+            Vt<Release_Del>(cliReDP, 0x08)(cliReDP);
+            Vt<Release_Del>(cliReLob, 0x08)(cliReLob);
+            Vt<Close_Del>(host2DP, 0x10)(host2DP);
+            Vt<Release_Del>(host2DP, 0x08)(host2DP);
+            Vt<Release_Del>(host2Lob, 0x08)(host2Lob);
+
+            Console.WriteLine("[PASS] Test 6: Disconnect system events & immediate same-port reconnect without restart verified.");
+
+            // Test 7: Execute exact 39-byte native x86 DPlayCoCreateThunk from patched Imperialism II.exe
+            string exePath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(dllPath), "Imperialism II.exe");
+            VerifyExeX86Thunk(exePath);
+            Console.WriteLine("[PASS] Test 7: Native x86 DPlayCoCreateThunk execution (primary + fallback branches) verified.");
+
+            // Test 8: Cross-process Host <-> Client session over real OS sockets
+            IntPtr mpHostDP, mpHostLob;
+            coCreate(ref gDp, IntPtr.Zero, 1, ref iDp, out mpHostDP);
+            coCreate(ref gLob, IntPtr.Zero, 1, ref iLob, out mpHostLob);
+            InitConn(mpHostDP, mpHostLob, null);
+            HostOpen(mpHostDP, "Cross-Process Session");
+            uint mpHostPid = MakePlayer(mpHostDP, "Russia");
+
+            ProcessStartInfo psi = new ProcessStartInfo();
+            psi.FileName = typeof(TestMultiplayer).Assembly.Location;
+            psi.Arguments = "--client-worker \"" + dllPath + "\" 12357";
+            psi.UseShellExecute = false;
+            psi.RedirectStandardOutput = true;
+            psi.RedirectStandardError = true;
+            Process child = Process.Start(psi);
+
+            uint mpFrom, mpTo;
+            byte[] childMsg = WaitReceive(mpHostDP, out mpFrom, out mpTo, 5000);
+            Check(childMsg != null && mpFrom == 2 && mpTo == 1 && Encoding.ASCII.GetString(childMsg) == "HELLO_FROM_CHILD_PROCESS",
+                  "Host process received packet from Child OS process");
+
+            byte[] welcome = Encoding.ASCII.GetBytes("WELCOME_FROM_HOST_PROCESS");
+            IntPtr pWelcome = Marshal.AllocHGlobal(welcome.Length);
+            Marshal.Copy(welcome, 0, pWelcome, welcome.Length);
+            Check(Vt<Send_Del>(mpHostDP, 0x68)(mpHostDP, mpHostPid, 2, 1, pWelcome, (uint)welcome.Length) == DP_OK, "Host reply to Child OS process");
+            Marshal.FreeHGlobal(pWelcome);
+
+            bool exited = child.WaitForExit(5000);
+            string childErr = child.StandardError.ReadToEnd();
+            Check(exited && child.ExitCode == 0, "Child OS process exited cleanly: " + childErr);
+
+            byte[] childDrop = WaitReceive(mpHostDP, out mpFrom, out mpTo, 2000);
+            Check(childDrop != null && mpFrom == 0 && BitConverter.ToUInt32(childDrop, 0) == 0x0005,
+                  "Host received DPSYS_DESTROYPLAYERORGROUP when Child OS process closed");
+
+            Vt<Close_Del>(mpHostDP, 0x10)(mpHostDP);
+            Vt<Release_Del>(mpHostDP, 0x08)(mpHostDP);
+            Vt<Release_Del>(mpHostLob, 0x08)(mpHostLob);
+            Console.WriteLine("[PASS] Test 8: Separate OS process Host <-> Client multiplayer session verified.");
+
+            Console.WriteLine("\nALL MULTIPLAYER INTEGRATION TESTS PASSED SUCCESSFULLY!");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("TEST FAILED: " + ex);
+            return 1;
+        }
+    }
+}
