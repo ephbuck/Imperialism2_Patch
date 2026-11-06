@@ -17,7 +17,7 @@ Write-Host "=== 1. Compiling Imp2Net.dll (x86) ==="
 $imp2NetDll = Join-Path $objDir "Imp2Net.dll"
 & $csc /nologo /platform:x86 /target:library /optimize+ `
     /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll `
-    /out:$imp2NetDll (Join-Path $srcDir "Imp2Net.cs")
+    /out:$imp2NetDll (Join-Path $srcDir "Imp2Net.cs") (Join-Path $srcDir "WorldSync.cs")
 if ($LASTEXITCODE -ne 0) { throw "csc.exe failed with exit code $LASTEXITCODE" }
 
 Write-Host "=== 2. Assembling standalone 32-bit dplayx.dll (with embedded Imp2Net.dll) ==="
@@ -69,13 +69,30 @@ if (Test-Path -LiteralPath $gameDir) {
     Write-Host "=== 3. Patching & Deploying to Working Game Folder ==="
     $gameExe = Join-Path $gameDir "Imperialism II.exe"
     & (Join-Path $srcDir "PatchExe.ps1") -InputExe $gameExe -OutputExe $gameExe
-    Copy-Item -LiteralPath $gameExe -Destination (Join-Path $repoRoot "ImpII.exe") -Force
+    $rootExe = Join-Path $repoRoot "ImpII.exe"
+    if (-not (Test-Path -LiteralPath $rootExe) -or
+        (Get-FileHash -LiteralPath $gameExe).Hash -ne (Get-FileHash -LiteralPath $rootExe).Hash) {
+        Copy-Item -LiteralPath $gameExe -Destination $rootExe -Force
+    }
     Copy-Item -LiteralPath $builtDplayx -Destination (Join-Path $gameDir "dplayx.dll") -Force
     $gameIni = Join-Path $gameDir "dplayx.ini"
     if (-not (Test-Path $gameIni)) {
         [System.IO.File]::WriteAllText($gameIni, $iniContent, [System.Text.Encoding]::ASCII)
     }
     Write-Host "Deployed patched Imperialism II.exe, dplayx.dll, and dplayx.ini to: $gameDir"
+}
+
+# Keep the desktop launchers in the test VMs on the same build. Diagnostic logging
+# is enabled only in this test bundle; preserve the user's normal configuration.
+$vmDeployDir = Join-Path $objDir "vm-deploy"
+New-Item -ItemType Directory -Force -Path $vmDeployDir | Out-Null
+$vmSourceExe = Join-Path $repoRoot "ImpII.exe"
+if (Test-Path -LiteralPath $vmSourceExe) {
+    Copy-Item -LiteralPath $vmSourceExe -Destination (Join-Path $vmDeployDir "Imperialism II.exe") -Force
+    Copy-Item -LiteralPath $builtDplayx -Destination (Join-Path $vmDeployDir "dplayx.dll") -Force
+    $vmIniContent = [System.IO.File]::ReadAllText($rootIni) -replace '(?m)^Log=0\r?$', 'Log=1'
+    [System.IO.File]::WriteAllText((Join-Path $vmDeployDir "dplayx.ini"), $vmIniContent, [System.Text.Encoding]::ASCII)
+    Write-Host "Prepared VM launch bundle: $vmDeployDir"
 }
 
 Write-Host "=== Build Complete ==="

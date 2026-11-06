@@ -33,6 +33,64 @@ Original *Imperialism II* (1999) relied on Windows 98 DirectPlay 4 (`IDirectPlay
 
 ---
 
+### World Synchronization (gameplay validation in progress)
+
+Both host and clients must use the same updated EXE and DLL. The versioned join
+handshake rejects older peers rather than allowing an incompatible transfer.
+
+When the host sends initial game options, the shim captures the current world
+on the game thread. Generated/scenario lobbies use the native map serializer;
+already-loaded worlds use a full native save. It transfers that immutable
+snapshot in 64 KiB chunks on the existing TCP connection. Clients verify
+the total length and SHA-256, then atomically publish the file beneath
+`Save\NetSync`. A patched client loader opens that exact snapshot; it does not
+guess a `cli_*.imp` filename. A staging map is applied after native staging setup
+and before its preview appears. Full snapshot capture uses the base great-power writer expected by remote client countries,
+omitting host-only and AI extensions. Private virtual-table copies override
+only that writer during the synchronous save and are restored on unwind. Full
+loading preserves the live lobby phase and ownership; saved-player reconnect
+messages are suppressed during ingestion. Protocol version 3 carries the host's
+original world mode, so loading does not change a generated lobby into a saved-game reconnect.
+Saved countries marked as disconnected can be claimed again in the lobby;
+countries owned by a connected player retain the engine's existing protection.
+Local host initialization keeps its ordinary message delivery and native file
+loader; only remote clients consume downloaded snapshots.
+After the host confirms a saved-country claim, the client reloads its committed
+snapshot with that country configured as its local player and enters the native
+saved-game screen. This runs on the game thread and preserves live ownership;
+the saved host's country remains remote on the client.
+
+The host holds initialization until the client has committed the file and holds
+later messages for that client until native loading reports success. The native
+StartGame entry is gated until every remote player has loaded its world. Each
+client has an independent, bounded writer queue, so a stalled transfer does not
+block other clients or network readers. Failed, corrupt, or timed-out transfers
+disconnect the affected client; rejoining starts a fresh transfer. Ordinary TCP
+packet loss is handled by TCP retransmission. Snapshots are limited to 32 MiB;
+transfer/ingestion waits expire after 30 seconds without completion.
+
+This work covers lobby joining and the host's existing world. It preserves the
+engine's restrictions on joining a match already in progress. The 12-stage
+automated suite covers transport, snapshot verification, concurrent and
+cross-process transfers, load-result barriers, and native hook execution. Its
+loader fixtures do **not** establish successful native world deserialization.
+Separate VM checks verified saved-world ingestion, reclaiming a disconnected
+player's country while protecting the host's occupied country, resuming France
+against an England host and advancing the saved match from 1504 to 1506, and a
+generated-world lobby, two-player launch, and advancement from 1502 to 1504.
+Scenario, native three-player, longer-run state comparison, and extended saved-world
+checks remain pending. See [MULTIPLAYER_TODO.md](MULTIPLAYER_TODO.md).
+
+The test VMs' desktop `run.bat` files use [tools/run-vm-game.bat](tools/run-vm-game.bat).
+Each launch copies and verifies the EXE, DLL, and configuration from
+`\\VBOXSVR\Imperialism2_Patch\obj\vm-deploy` into `C:\Games\Imperialism2`.
+`build.ps1` refreshes this bundle automatically and enables diagnostic logging
+in its test configuration. Close the game before rerunning the launcher; it
+refuses to update a running copy and stops if any copy or verification fails.
+The first replaced game files and original desktop launchers are retained with
+a `.before-worldsync.bak` suffix. `run.bat /deploy-only` verifies deployment
+without starting the game.
+
 ### 2. `_winCdPlay` CD Audio Assertion Popup (`D:\Epsilon\win_cd.cpp @407`)
 On modern Windows systems, *Imperialism II* (v1.03) can intermittently trigger a blocking debug assertion popup when changing music tracks:
 
@@ -94,7 +152,7 @@ No external SDKs or compilers are required—`build.ps1` uses the built-in 32-bi
 # Build standalone dplayx.dll and apply binary patches
 powershell -ExecutionPolicy Bypass -File .\build.ps1
 
-# Compile and run the 8-stage x86 multiplayer & native thunk integration test suite
+# Compile and run the 12-stage x86 multiplayer/world-sync integration test suite
 C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe /nologo /platform:x86 /out:.\obj\TestMultiplayer.exe .\tests\TestMultiplayer.cs
 .\obj\TestMultiplayer.exe .\dplayx.dll
 ```
@@ -108,18 +166,23 @@ C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe /nologo /platform:x86 /out
 | File | Size | SHA-256 |
 | :--- | :--- | :--- |
 | **Original `Imperialism II.exe` (v1.03 GOG)** | `4,024,320` B | `63346490C488D2A4EF528E3C0884D823E60AC59F602FA82657B39AA040253279` |
-| **Patched `ImpII.exe`** | `4,024,320` B | `3C0454AE1414C7EB6B520C0F8D7CE6E8FA3F465FB61B14B63A3673E9E812BDB6` |
-| **`dplayx.dll`** | `62,464` B | `47F90E5E37DD6B3872CE774ADB51F729044A27A98A086CC1FB7DF6DFD2240426` |
+| **Patched `ImpII.exe`** | `4,024,320` B | `998384BB696F02D37A6725CEA33F98BC2CA711B803C2638BED07A91D687CA7CC` |
+| **`dplayx.dll`** | `89,600` B | `C589356D3D07F8ABA7090C1B9D4433A8C44400E6461B85BCD5FCA7D295CED6A1` |
 
 ### `Imperialism II.exe` Offsets Modified (`src/PatchExe.ps1`)
 
 | Patch | File Offset (`VA`) | Original Bytes -> Patched Bytes | Purpose |
 | :--- | :--- | :--- | :--- |
 | **`_winCdPlay` Assert** | `0x27B16C` (`0x0067BD6C`) | `E8 40 AB D8 FF` -> `90 90 90 90 90` | Suppresses modal CD audio MCI assert popup (`win_cd.cpp @407`) |
-| **`.text` VirtualSize** | PE `.text` `+0x08` | `4F 78 2E 00` -> `00 79 2E 00` | Extends `.text` `VirtualSize` within existing `0x2E7A00` raw section for thunk |
+| **`.text` VirtualSize** | PE `.text` `+0x08` | `4F 78 2E 00` -> `C0 79 2E 00` | Extends `.text` `VirtualSize` within existing `0x2E7A00` raw section for COM and world-sync thunks |
 | **`DPlayCoCreateThunk`** | `0x2E7C60` (`0x006E8860`) & `.rdata` `0x342500` (`0x00743700`) | Zero padding -> 39-byte x86 thunk + strings | Routes `CDirectPlay` `CoCreateInstance` to `DPLAYX.dll!Imp2CoCreateInstance` with fallback to `ole32.dll!CoCreateInstance` |
 | **`CDirectPlay` Call Sites (×5)** | `0x08F0C8`, `0x08F26B`, `0x08F35C`, `0x08F683`, `0x0904A9` | `AC C7 76 00` -> `00 37 74 00` | Redirects `CDirectPlay` `CoCreateInstance` indirect calls to thunk pointer |
 | **`TTCPIPDialog` Max Length** | `0x1961B3` (`0x00596DB3`) | `... 0F 00` -> `... 7F 00` | Expands TCP/IP Join `'addr'` input box limit from `15` to `127` chars |
 | **`AskIPAddress` Filter** | `0x2781DD` (`0x00678DDD`) | `E8 FC E4 D8 FF` -> `90 90 90 90 90` | Bypasses `StripIPAddressString` so `hostname:port@interface` is preserved |
 | **`CDirectPlay::Join` Timeout** | `0x08F831` (`0x00490431`) | `05 E8 03 00 00` -> `05 88 13 00 00` | Increases default `EnumSessions` join timeout from `1000 ms` to `5000 ms` |
 | **`WNetMgr.cpp @927` Assert** | `0x27D463` (`0x0067E063`) | `E8 BA 71 D8 FF` -> `90 90 90 90 90` | Suppresses debug assert popup on unhandled `DPSYS_*` system messages |
+| **Initial world loader** | `0x18B9AD` (`0x0058C5AD`) | Call `0x00408E0E` -> call `0x006E8890` | Loads the committed network snapshot through the cdecl `Imp2LoadWorld` export; retains native fallback when the DLL/export is absent |
+| **Lobby continuation / map application** | `0x18B9B5`, `0x18B97B`; thunks `0x2E7D40`, `0x2E7D60` | Verified native branches -> guarded thunks | Preserves country selection after full loading; applies staging maps before the preview; retains original failure handling |
+| **Native launch barrier** | `0x18A540` (`0x0058B140`) | First 10 bytes -> jump `0x006E8900` plus padding | Checks `Imp2CanStart`, preserves ECX and original instructions, and returns false while a remote player has not loaded |
+| **Saved-country reclaim** | `0x18ABFC` (`0x0058B7FC`); thunk `0x2E7D90` (`0x006E8990`) | Verified 8-byte owner check -> jump plus padding | Allows disconnected saved reservations (`-2`) through the native claim path; preserves live-owner validation |
+| **World hook thunks / names** | `0x2E7C90`, `0x2E7CC0`, `0x2E7D00`; names `0x342530`, `0x342540` | Verified padding -> thunks / export names | Resolves the new exports without adding an import dependency; rejects modified hook sites and serializer/loader signatures |
