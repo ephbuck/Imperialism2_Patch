@@ -529,7 +529,7 @@ namespace Imp2Net
         public byte[] Data;
     }
 
-    internal sealed class ClientPeer
+    internal sealed partial class ClientPeer
     {
         public TcpClient Client;
         public NetworkStream Stream;
@@ -540,14 +540,13 @@ namespace Imp2Net
 
         public void Close()
         {
-            if (Closed) return;
-            Closed = true;
+            CancelWrites();
             try { if (Stream != null) Stream.Close(); } catch { }
             try { if (Client != null) Client.Close(); } catch { }
         }
     }
 
-    internal sealed class DPlaySessionEngine : IDisposable
+    internal sealed partial class DPlaySessionEngine : IDisposable
     {
         private readonly object m_lock = new object();
         private readonly Queue<QueuedMessage> m_recvQueue = new Queue<QueuedMessage>();
@@ -652,15 +651,19 @@ namespace Imp2Net
                 m_running = true;
                 m_isHost = true;
                 m_isOpen = true;
+                NativeWorldBridge.SetHost(this);
 
-                Thread acceptThread = new Thread(HostAcceptLoop);
+                TcpListener sessionListener = m_tcpListener;
+                UdpClient sessionUdp = m_udpListener;
+                Guid sessionInstance = m_guidInstance;
+                Thread acceptThread = new Thread(() => HostAcceptLoop(sessionListener, sessionInstance));
                 acceptThread.IsBackground = true;
                 acceptThread.Name = "Imp2HostAccept";
                 acceptThread.Start();
 
                 if (m_udpListener != null)
                 {
-                    Thread udpThread = new Thread(HostUdpDiscoveryLoop);
+                    Thread udpThread = new Thread(() => HostUdpDiscoveryLoop(sessionUdp, sessionInstance));
                     udpThread.IsBackground = true;
                     udpThread.Name = "Imp2HostUdp";
                     udpThread.Start();
@@ -1027,7 +1030,10 @@ namespace Imp2Net
                 reader.Name = "Imp2ClientReader";
                 reader.Start();
 
-                SendFrame(peer, DPlayConstants.PKT_TCP_JOIN_REQ, guidInstance.ToByteArray());
+                byte[] joinRequest = new byte[20];
+                Buffer.BlockCopy(guidInstance.ToByteArray(), 0, joinRequest, 0, 16);
+                Buffer.BlockCopy(BitConverter.GetBytes(WorldProtocol.Version), 0, joinRequest, 16, 4);
+                SendFrame(peer, DPlayConstants.PKT_TCP_JOIN_REQ, joinRequest);
                 if (!m_joinAckEvent.WaitOne(5000) || !m_joinAccepted)
                 {
                     DPlayConfig.Log("JoinSession handshake rejected or timed out.");
@@ -1036,6 +1042,7 @@ namespace Imp2Net
                 }
 
                 m_isOpen = true;
+                NativeWorldBridge.SetClient(this);
                 DPlayConfig.Log("Joined session '{0}' at {1}", m_sessionName, target.HostEndPoint);
                 return DPlayConstants.DP_OK;
             }
@@ -1177,7 +1184,7 @@ namespace Imp2Net
                 if (m_hostConn == null || m_hostConn.Closed)
                     return DPlayConstants.DPERR_SESSIONLOST;
 
-                // Send and flush synchronously so Host updates immediately
+                // Queue before subsequent game messages so the host sees the marker first.
                 SendFrame(m_hostConn, DPlayConstants.PKT_TCP_SET_PLAYER_DATA, pkt);
             }
             return DPlayConstants.DP_OK;
@@ -1284,6 +1291,20 @@ namespace Imp2Net
             if (!m_isOpen) return DPlayConstants.DPERR_NOCONNECTION;
             if (data == null) data = new byte[0];
 
+            if (m_isHost && WorldProtocol.IsInitialOptions(data))
+            {
+                // Hosting a saved world first sends these options to the local
+                // host itself. Preserve that delivery so it can load the world
+                // before any remote snapshot is captured.
+                bool localRecipient;
+                lock (m_lock)
+                {
+                    PlayerRecord recipient;
+                    localRecipient = m_players.TryGetValue(idTo, out recipient) && recipient.IsLocal;
+                }
+                if (!localRecipient) return CaptureAndSendWorld(idFrom, idTo, data);
+            }
+
             byte[] frame;
             using (MemoryStream ms = new MemoryStream(12 + data.Length))
             using (BinaryWriter bw = new BinaryWriter(ms))
@@ -1297,13 +1318,28 @@ namespace Imp2Net
 
             if (m_isHost)
             {
-                RouteDataFromHost(idFrom, idTo, data, frame, null);
-                return DPlayConstants.DP_OK;
+                return RouteDataFromHost(idFrom, idTo, data, frame, null)
+                    ? DPlayConstants.DP_OK : DPlayConstants.DPERR_SESSIONLOST;
             }
             else
             {
                 if (m_hostConn == null || m_hostConn.Closed)
                     return DPlayConstants.DPERR_SESSIONLOST;
+
+                lock (m_lock)
+                {
+                    if (m_loadingWorld)
+                    {
+                        // The stock loader reports the saved player's reconnect
+                        // identity. This snapshot initializes a fresh lobby join;
+                        // ownership comes from the host after the load barrier.
+                        if (WorldProtocol.IsSnapshotReconnectMessage(data)) return DPlayConstants.DP_OK;
+                        if (m_loadMessagesBytes + frame.Length > WorldProtocol.MaxQueuedBytes)
+                            return DPlayConstants.DPERR_GENERIC;
+                        m_loadMessages.Add(frame); m_loadMessagesBytes += frame.Length;
+                        return DPlayConstants.DP_OK;
+                    }
+                }
 
                 return SendFrame(m_hostConn, DPlayConstants.PKT_TCP_DATA_MSG, frame)
                     ? DPlayConstants.DP_OK
@@ -1311,7 +1347,7 @@ namespace Imp2Net
             }
         }
 
-        private void RouteDataFromHost(uint idFrom, uint idTo, byte[] rawData, byte[] wireFrame, ClientPeer senderPeer)
+        private bool RouteDataFromHost(uint idFrom, uint idTo, byte[] rawData, byte[] wireFrame, ClientPeer senderPeer)
         {
             List<ClientPeer> targets = new List<ClientPeer>();
             bool deliverToHostLocal = false;
@@ -1359,15 +1395,25 @@ namespace Imp2Net
                 }
             }
 
+            bool sent = true;
             for (int i = 0; i < targets.Count; i++)
-                SendFrame(targets[i], DPlayConstants.PKT_TCP_DATA_MSG, wireFrame);
+                sent &= SendFrame(targets[i], DPlayConstants.PKT_TCP_DATA_MSG, wireFrame);
+            return sent;
         }
 
-        public bool PeekOrDequeueMessage(int bufCapacity, out uint idFrom, out uint idTo, out byte[] data, out int requiredSize)
+        public bool PeekOrDequeueMessage(int bufCapacity, uint flags, uint fromFilter, uint toFilter,
+            out uint idFrom, out uint idTo, out byte[] data, out int requiredSize)
         {
             lock (m_lock)
             {
-                if (m_recvQueue.Count == 0)
+                QueuedMessage front = null;
+                foreach (QueuedMessage candidate in m_recvQueue)
+                {
+                    if ((flags & 4) != 0 && candidate.IdFrom != fromFilter) continue;
+                    if ((flags & 2) != 0 && candidate.IdTo != toFilter) continue;
+                    front = candidate; break;
+                }
+                if (front == null)
                 {
                     idFrom = 0;
                     idTo = 0;
@@ -1376,7 +1422,6 @@ namespace Imp2Net
                     return false;
                 }
 
-                QueuedMessage front = m_recvQueue.Peek();
                 requiredSize = front.Data != null ? front.Data.Length : 0;
                 idFrom = front.IdFrom;
                 idTo = front.IdTo;
@@ -1387,7 +1432,19 @@ namespace Imp2Net
                     return true; // Caller receives DPERR_BUFFERTOOSMALL with requiredSize
                 }
 
-                m_recvQueue.Dequeue();
+                if ((flags & 8) == 0)
+                {
+                    if (m_recvQueue.Peek() == front) m_recvQueue.Dequeue();
+                    else
+                    {
+                        int count = m_recvQueue.Count;
+                        for (int i = 0; i < count; i++)
+                        {
+                            QueuedMessage next = m_recvQueue.Dequeue();
+                            if (next != front) m_recvQueue.Enqueue(next);
+                        }
+                    }
+                }
                 data = front.Data ?? new byte[0];
                 return true;
             }
@@ -1415,14 +1472,14 @@ namespace Imp2Net
             }
         }
 
-        private void HostUdpDiscoveryLoop()
+        private void HostUdpDiscoveryLoop(UdpClient udp, Guid instance)
         {
-            while (m_running && m_udpListener != null)
+            while (m_running && m_udpListener == udp && m_guidInstance == instance)
             {
                 try
                 {
                     IPEndPoint remote = new IPEndPoint(IPAddress.Any, 0);
-                    byte[] pkt = m_udpListener.Receive(ref remote);
+                    byte[] pkt = udp.Receive(ref remote);
                     if (pkt == null || pkt.Length < 21) continue;
                     if (BitConverter.ToUInt32(pkt, 0) != DPlayConstants.MAGIC) continue;
                     if (pkt[4] != DPlayConstants.PKT_UDP_DISCOVER_REQ) continue;
@@ -1434,6 +1491,7 @@ namespace Imp2Net
                     byte[] respPayload = null;
                     lock (m_lock)
                     {
+                        if (m_guidInstance != instance) return;
                         bool joinDisabled = (m_sessionFlags & (DPlayConstants.DPSESSION_NEWPLAYERSDISABLED | DPlayConstants.DPSESSION_JOINDISABLED)) != 0;
                         bool full = m_players.Count >= m_maxPlayers;
                         if (!joinDisabled && !full && (reqApp == Guid.Empty || reqApp == m_guidApplication))
@@ -1448,7 +1506,7 @@ namespace Imp2Net
                         Buffer.BlockCopy(BitConverter.GetBytes(DPlayConstants.MAGIC), 0, resp, 0, 4);
                         resp[4] = DPlayConstants.PKT_UDP_DISCOVER_RESP;
                         Buffer.BlockCopy(respPayload, 0, resp, 5, respPayload.Length);
-                        m_udpListener.Send(resp, resp.Length, remote);
+                        udp.Send(resp, resp.Length, remote);
                     }
                 }
                 catch
@@ -1458,15 +1516,15 @@ namespace Imp2Net
             }
         }
 
-        private void HostAcceptLoop()
+        private void HostAcceptLoop(TcpListener listener, Guid instance)
         {
-            while (m_running && m_tcpListener != null)
+            while (m_running && m_tcpListener == listener && m_guidInstance == instance)
             {
                 try
                 {
-                    TcpClient tcp = m_tcpListener.AcceptTcpClient();
+                    TcpClient tcp = listener.AcceptTcpClient();
                     tcp.NoDelay = true;
-                    Thread t = new Thread(() => HostClientHandler(tcp));
+                    Thread t = new Thread(() => HostClientHandler(tcp, instance));
                     t.IsBackground = true;
                     t.Name = "Imp2HostPeer";
                     t.Start();
@@ -1478,8 +1536,10 @@ namespace Imp2Net
             }
         }
 
-        private void HostClientHandler(TcpClient tcp)
+        private void HostClientHandler(TcpClient tcp, Guid instance)
         {
+            tcp.ReceiveTimeout = 5000;
+            tcp.SendTimeout = 10000;
             ClientPeer peer = new ClientPeer
             {
                 Client = tcp,
@@ -1504,6 +1564,7 @@ namespace Imp2Net
                     byte[] resp = null;
                     lock (m_lock)
                     {
+                        if (m_guidInstance != instance) return;
                         bool joinDisabled = (m_sessionFlags & (DPlayConstants.DPSESSION_NEWPLAYERSDISABLED | DPlayConstants.DPSESSION_JOINDISABLED)) != 0;
                         bool full = m_players.Count >= m_maxPlayers;
                         if (!joinDisabled && !full && (reqApp == Guid.Empty || reqApp == m_guidApplication))
@@ -1515,8 +1576,11 @@ namespace Imp2Net
                     return;
                 }
 
-                if (firstType != DPlayConstants.PKT_TCP_JOIN_REQ || firstPayload.Length < 16)
+                if (firstType != DPlayConstants.PKT_TCP_JOIN_REQ || firstPayload.Length != 20 ||
+                    BitConverter.ToInt32(firstPayload, 16) != WorldProtocol.Version)
                 {
+                    DPlayConfig.Log("Join rejected: both players need the same world-sync patch version.");
+                    SendFrame(peer.Stream, DPlayConstants.PKT_TCP_JOIN_ACK, new byte[] { 0 });
                     peer.Close();
                     return;
                 }
@@ -1525,22 +1589,21 @@ namespace Imp2Net
                 byte[] ackPayload;
                 lock (m_lock)
                 {
+                    if (m_guidInstance != instance) return;
                     bool joinDisabled = (m_sessionFlags & (DPlayConstants.DPSESSION_NEWPLAYERSDISABLED | DPlayConstants.DPSESSION_JOINDISABLED)) != 0;
                     bool full = m_players.Count >= m_maxPlayers;
                     if (joinDisabled || full || (reqInst != Guid.Empty && reqInst != m_guidInstance))
                     {
-                        SendFrame(peer, DPlayConstants.PKT_TCP_JOIN_ACK, new byte[] { 0 });
+                        SendFrame(peer.Stream, DPlayConstants.PKT_TCP_JOIN_ACK, new byte[] { 0 });
                         peer.Close();
                         return;
                     }
-
-                    m_peers.Add(peer);
-                    joinedSession = true;
 
                     using (MemoryStream ms = new MemoryStream())
                     using (BinaryWriter bw = new BinaryWriter(ms))
                     {
                         bw.Write((byte)1); // accepted
+                        bw.Write(WorldProtocol.Version);
                         byte[] sessBytes = BuildSessionPayload();
                         bw.Write(sessBytes.Length);
                         bw.Write(sessBytes);
@@ -1553,105 +1616,128 @@ namespace Imp2Net
                         }
                         ackPayload = ms.ToArray();
                     }
+                    // Enqueue the acknowledgment before this peer can receive broadcasts.
+                    tcp.ReceiveTimeout = 0;
+                    SendFrame(peer, DPlayConstants.PKT_TCP_JOIN_ACK, ackPayload);
+                    m_peers.Add(peer);
+                    joinedSession = true;
                 }
 
-                SendFrame(peer, DPlayConstants.PKT_TCP_JOIN_ACK, ackPayload);
-
-                while (m_running && !peer.Closed)
+                while (m_running && !peer.Closed && m_guidInstance == instance)
                 {
                     byte pktType;
                     byte[] payload = ReadFrame(peer.Stream, out pktType);
                     if (payload == null) break;
 
-                    switch (pktType)
+                    lock (m_lock)
                     {
-                        case DPlayConstants.PKT_TCP_CREATE_PLAYER:
+                        if (m_guidInstance != instance) break;
+                        switch (pktType)
                         {
-                            using (MemoryStream ms = new MemoryStream(payload))
-                            using (BinaryReader br = new BinaryReader(ms))
+                            case DPlayConstants.PKT_TCP_CREATE_PLAYER:
                             {
-                                int sLen = br.ReadInt32();
-                                string sName = Encoding.ASCII.GetString(br.ReadBytes(sLen));
-                                int lLen = br.ReadInt32();
-                                string lName = Encoding.ASCII.GetString(br.ReadBytes(lLen));
-
-                                uint newId;
-                                byte[] joinedBytes;
-                                List<ClientPeer> otherPeers = new List<ClientPeer>();
-                                lock (m_lock)
+                                using (MemoryStream ms = new MemoryStream(payload))
+                                using (BinaryReader br = new BinaryReader(ms))
                                 {
-                                    newId = m_nextDpId++;
-                                    PlayerRecord rec = new PlayerRecord
+                                    int sLen = br.ReadInt32();
+                                    string sName = Encoding.ASCII.GetString(br.ReadBytes(sLen));
+                                    int lLen = br.ReadInt32();
+                                    string lName = Encoding.ASCII.GetString(br.ReadBytes(lLen));
+
+                                    uint newId;
+                                    byte[] joinedBytes;
+                                    List<ClientPeer> otherPeers = new List<ClientPeer>();
+                                    lock (m_lock)
                                     {
-                                        PlayerId = newId,
-                                        ShortName = sName,
-                                        LongName = lName,
-                                        IsLocal = false,
-                                        Connection = peer,
-                                        RemoteData = new byte[0]
-                                    };
-                                    m_players[newId] = rec;
-                                    peer.OwnedPlayers.Add(newId);
-                                    joinedBytes = SerializePlayerRecord(rec);
-                                    for (int i = 0; i < m_peers.Count; i++)
-                                    {
-                                        if (m_peers[i] != peer)
-                                            otherPeers.Add(m_peers[i]);
+                                        if (m_players.Count >= m_maxPlayers ||
+                                            (m_sessionFlags & (DPlayConstants.DPSESSION_NEWPLAYERSDISABLED | DPlayConstants.DPSESSION_JOINDISABLED)) != 0)
+                                        {
+                                            SendFrame(peer, DPlayConstants.PKT_TCP_CREATE_PLAYER_ACK, BitConverter.GetBytes(0u));
+                                            break;
+                                        }
+                                        newId = m_nextDpId++;
+                                        PlayerRecord rec = new PlayerRecord
+                                        {
+                                            PlayerId = newId,
+                                            ShortName = sName,
+                                            LongName = lName,
+                                            IsLocal = false,
+                                            Connection = peer,
+                                            RemoteData = new byte[0]
+                                        };
+                                        m_players[newId] = rec;
+                                        peer.OwnedPlayers.Add(newId);
+                                        peer.RequireWorld();
+                                        joinedBytes = SerializePlayerRecord(rec);
+                                        for (int i = 0; i < m_peers.Count; i++)
+                                        {
+                                            if (m_peers[i] != peer)
+                                                otherPeers.Add(m_peers[i]);
+                                        }
                                     }
+
+                                    SendFrame(peer, DPlayConstants.PKT_TCP_CREATE_PLAYER_ACK, BitConverter.GetBytes(newId));
+                                    for (int i = 0; i < otherPeers.Count; i++)
+                                        SendFrame(otherPeers[i], DPlayConstants.PKT_TCP_PLAYER_JOINED, joinedBytes);
+
+                                    DPlayConfig.Log("Remote player '{0}' assigned DPID {1}", sName, newId);
                                 }
-
-                                SendFrame(peer, DPlayConstants.PKT_TCP_CREATE_PLAYER_ACK, BitConverter.GetBytes(newId));
-                                for (int i = 0; i < otherPeers.Count; i++)
-                                    SendFrame(otherPeers[i], DPlayConstants.PKT_TCP_PLAYER_JOINED, joinedBytes);
-
-                                DPlayConfig.Log("Remote player '{0}' assigned DPID {1}", sName, newId);
+                                break;
                             }
-                            break;
-                        }
-                        case DPlayConstants.PKT_TCP_SET_PLAYER_DATA:
-                        {
-                            if (payload.Length >= 8)
+                            case DPlayConstants.PKT_TCP_SET_PLAYER_DATA:
                             {
-                                uint pid = BitConverter.ToUInt32(payload, 0);
-                                int dLen = BitConverter.ToInt32(payload, 4);
-                                byte[] data = SubArray(payload, 8, dLen);
-                                List<ClientPeer> otherPeers = new List<ClientPeer>();
-                                lock (m_lock)
+                                if (payload.Length >= 8)
                                 {
-                                    PlayerRecord rec;
-                                    if (m_players.TryGetValue(pid, out rec))
-                                        rec.RemoteData = data;
-                                    for (int i = 0; i < m_peers.Count; i++)
+                                    uint pid = BitConverter.ToUInt32(payload, 0);
+                                    int dLen = BitConverter.ToInt32(payload, 4);
+                                    if (dLen < 0 || dLen != payload.Length - 8)
+                                        throw new InvalidDataException("Invalid player data length.");
+                                    byte[] data = SubArray(payload, 8, dLen);
+                                    List<ClientPeer> otherPeers = new List<ClientPeer>();
+                                    lock (m_lock)
                                     {
-                                        if (m_peers[i] != peer)
-                                            otherPeers.Add(m_peers[i]);
+                                        if (!peer.OwnedPlayers.Contains(pid)) throw new InvalidDataException("Player data sender mismatch.");
+                                        PlayerRecord rec;
+                                        if (m_players.TryGetValue(pid, out rec))
+                                            rec.RemoteData = data;
+                                        for (int i = 0; i < m_peers.Count; i++)
+                                        {
+                                            if (m_peers[i] != peer)
+                                                otherPeers.Add(m_peers[i]);
+                                        }
                                     }
+                                    for (int i = 0; i < otherPeers.Count; i++)
+                                        SendFrame(otherPeers[i], DPlayConstants.PKT_TCP_SET_PLAYER_DATA, payload);
                                 }
-                                for (int i = 0; i < otherPeers.Count; i++)
-                                    SendFrame(otherPeers[i], DPlayConstants.PKT_TCP_SET_PLAYER_DATA, payload);
+                                break;
                             }
-                            break;
-                        }
-                        case DPlayConstants.PKT_TCP_DATA_MSG:
-                        {
-                            if (payload.Length >= 12)
+                            case DPlayConstants.PKT_TCP_DATA_MSG:
                             {
-                                uint idFrom = BitConverter.ToUInt32(payload, 0);
-                                uint idTo = BitConverter.ToUInt32(payload, 4);
-                                int dLen = BitConverter.ToInt32(payload, 8);
-                                byte[] raw = SubArray(payload, 12, dLen);
-                                RouteDataFromHost(idFrom, idTo, raw, payload, peer);
+                                if (payload.Length >= 12)
+                                {
+                                    uint idFrom = BitConverter.ToUInt32(payload, 0);
+                                    uint idTo = BitConverter.ToUInt32(payload, 4);
+                                    int dLen = BitConverter.ToInt32(payload, 8);
+                                    if (dLen < 0 || dLen != payload.Length - 12 || !peer.OwnedPlayers.Contains(idFrom))
+                                        throw new InvalidDataException("Invalid game message length or sender.");
+                                    byte[] raw = SubArray(payload, 12, dLen);
+                                    RouteDataFromHost(idFrom, idTo, raw, payload, peer);
+                                }
+                                break;
                             }
-                            break;
-                        }
-                        case DPlayConstants.PKT_TCP_PLAYER_LEFT:
-                        {
-                            if (payload.Length >= 4)
+                            case DPlayConstants.PKT_TCP_PLAYER_LEFT:
                             {
-                                uint pid = BitConverter.ToUInt32(payload, 0);
-                                HandlePeerPlayerRemoved(peer, pid);
+                                if (payload.Length >= 4)
+                                {
+                                    uint pid = BitConverter.ToUInt32(payload, 0);
+                                    if (!peer.OwnedPlayers.Contains(pid)) throw new InvalidDataException("Player removal sender mismatch.");
+                                    HandlePeerPlayerRemoved(peer, pid);
+                                }
+                                break;
                             }
-                            break;
+                            case WorldProtocol.Ack:
+                                peer.AcknowledgeWorld(payload);
+                                break;
                         }
                     }
                 }
@@ -1685,7 +1771,8 @@ namespace Imp2Net
             lock (m_lock)
             {
                 sourcePeer.OwnedPlayers.Remove(pid);
-                removed = m_players.Remove(pid);
+                PlayerRecord record;
+                removed = m_players.TryGetValue(pid, out record) && record.Connection == sourcePeer && m_players.Remove(pid);
                 if (removed)
                 {
                     for (int i = 0; i < m_peers.Count; i++)
@@ -1709,147 +1796,160 @@ namespace Imp2Net
         {
             try
             {
-                while (m_running && !hostPeer.Closed)
+                while (m_running && !hostPeer.Closed && m_hostConn == hostPeer)
                 {
                     byte pktType;
                     byte[] payload = ReadFrame(hostPeer.Stream, out pktType);
                     if (payload == null) break;
-
-                    switch (pktType)
+                    lock (m_lock)
                     {
-                        case DPlayConstants.PKT_TCP_JOIN_ACK:
+                        if (m_hostConn != hostPeer) break;
+                        switch (pktType)
                         {
-                            if (payload.Length >= 1 && payload[0] == 1)
+                            case DPlayConstants.PKT_TCP_JOIN_ACK:
                             {
-                                using (MemoryStream ms = new MemoryStream(payload, 1, payload.Length - 1))
-                                using (BinaryReader br = new BinaryReader(ms))
+                                if (payload.Length >= 5 && payload[0] == 1 && BitConverter.ToInt32(payload, 1) == WorldProtocol.Version)
                                 {
-                                    int sLen = br.ReadInt32();
-                                    byte[] sBytes = br.ReadBytes(sLen);
-                                    DiscoveredSession ds = ParseSessionPayload(sBytes, hostPeer.RemoteEndPoint, null);
-                                    int playerCount = br.ReadInt32();
+                                    using (MemoryStream ms = new MemoryStream(payload, 5, payload.Length - 5))
+                                    using (BinaryReader br = new BinaryReader(ms))
+                                    {
+                                        int sLen = br.ReadInt32();
+                                        byte[] sBytes = br.ReadBytes(sLen);
+                                        DiscoveredSession ds = ParseSessionPayload(sBytes, hostPeer.RemoteEndPoint, null);
+                                        int playerCount = br.ReadInt32();
+                                        lock (m_lock)
+                                        {
+                                            if (ds != null)
+                                            {
+                                                m_guidInstance = ds.GuidInstance;
+                                                m_guidApplication = ds.GuidApplication;
+                                                m_maxPlayers = ds.MaxPlayers;
+                                                m_sessionFlags = ds.Flags;
+                                                m_sessionName = ds.SessionName;
+                                            }
+                                            m_players.Clear();
+                                            for (int i = 0; i < playerCount; i++)
+                                            {
+                                                int pLen = br.ReadInt32();
+                                                PlayerRecord pr = DeserializePlayerRecord(br.ReadBytes(pLen), false);
+                                                m_players[pr.PlayerId] = pr;
+                                            }
+                                        }
+                                        m_joinAccepted = true;
+                                    }
+                                }
+                                m_joinAckEvent.Set();
+                                break;
+                            }
+                            case DPlayConstants.PKT_TCP_CREATE_PLAYER_ACK:
+                            {
+                                if (payload.Length >= 4)
+                                {
+                                    uint assignedId = BitConverter.ToUInt32(payload, 0);
                                     lock (m_lock)
                                     {
-                                        if (ds != null)
+                                        PlayerRecord rec;
+                                        if (!m_players.TryGetValue(assignedId, out rec))
                                         {
-                                            m_guidInstance = ds.GuidInstance;
-                                            m_guidApplication = ds.GuidApplication;
-                                            m_maxPlayers = ds.MaxPlayers;
-                                            m_sessionFlags = ds.Flags;
-                                            m_sessionName = ds.SessionName;
+                                            rec = new PlayerRecord { PlayerId = assignedId, IsLocal = true };
+                                            m_players[assignedId] = rec;
                                         }
-                                        m_players.Clear();
-                                        for (int i = 0; i < playerCount; i++)
+                                        else
                                         {
-                                            int pLen = br.ReadInt32();
-                                            PlayerRecord pr = DeserializePlayerRecord(br.ReadBytes(pLen), false);
-                                            m_players[pr.PlayerId] = pr;
+                                            rec.IsLocal = true;
                                         }
                                     }
-                                    m_joinAccepted = true;
+                                    m_createdPlayerIdResult = assignedId;
                                 }
+                                m_createPlayerAckEvent.Set();
+                                break;
                             }
-                            m_joinAckEvent.Set();
-                            break;
-                        }
-                        case DPlayConstants.PKT_TCP_CREATE_PLAYER_ACK:
-                        {
-                            if (payload.Length >= 4)
+                            case DPlayConstants.PKT_TCP_PLAYER_JOINED:
                             {
-                                uint assignedId = BitConverter.ToUInt32(payload, 0);
+                                PlayerRecord pr = DeserializePlayerRecord(payload, false);
                                 lock (m_lock)
                                 {
-                                    PlayerRecord rec;
-                                    if (!m_players.TryGetValue(assignedId, out rec))
+                                    if (!m_players.ContainsKey(pr.PlayerId))
+                                        m_players[pr.PlayerId] = pr;
+                                }
+                                break;
+                            }
+                            case DPlayConstants.PKT_TCP_PLAYER_LEFT:
+                            {
+                                if (payload.Length >= 4)
+                                {
+                                    uint pid = BitConverter.ToUInt32(payload, 0);
+                                    bool had;
+                                    lock (m_lock) { had = m_players.Remove(pid); }
+                                    if (had) EnqueueSystemDestroyPlayer(pid);
+                                }
+                                break;
+                            }
+                            case DPlayConstants.PKT_TCP_SET_PLAYER_DATA:
+                            {
+                                if (payload.Length >= 8)
+                                {
+                                    uint pid = BitConverter.ToUInt32(payload, 0);
+                                    int dLen = BitConverter.ToInt32(payload, 4);
+                                    if (dLen < 0 || dLen != payload.Length - 8)
+                                        throw new InvalidDataException("Invalid player data length.");
+                                    byte[] d = SubArray(payload, 8, dLen);
+                                    lock (m_lock)
                                     {
-                                        rec = new PlayerRecord { PlayerId = assignedId, IsLocal = true };
-                                        m_players[assignedId] = rec;
+                                        PlayerRecord rec;
+                                        if (m_players.TryGetValue(pid, out rec))
+                                            rec.RemoteData = d;
                                     }
-                                    else
+                                }
+                                break;
+                            }
+                            case DPlayConstants.PKT_TCP_SET_SESSION_DESC:
+                            {
+                                DiscoveredSession ds = ParseSessionPayload(payload, hostPeer.RemoteEndPoint, null);
+                                if (ds != null)
+                                {
+                                    lock (m_lock)
                                     {
-                                        rec.IsLocal = true;
+                                        m_sessionFlags = ds.Flags;
+                                        m_maxPlayers = ds.MaxPlayers;
+                                        m_sessionName = ds.SessionName;
+                                        // Queue DPSYS_SETSESSIONDESC (0x0104 + 80-byte DPSESSIONDESC2)
+                                        byte[] sysMsg = new byte[84];
+                                        Buffer.BlockCopy(BitConverter.GetBytes(DPlayConstants.DPSYS_SETSESSIONDESC), 0, sysMsg, 0, 4);
+                                        Buffer.BlockCopy(BitConverter.GetBytes(80u), 0, sysMsg, 4, 4);
+                                        Buffer.BlockCopy(BitConverter.GetBytes(m_sessionFlags), 0, sysMsg, 8, 4);
+                                        Buffer.BlockCopy(m_guidInstance.ToByteArray(), 0, sysMsg, 12, 16);
+                                        Buffer.BlockCopy(m_guidApplication.ToByteArray(), 0, sysMsg, 28, 16);
+                                        Buffer.BlockCopy(BitConverter.GetBytes(m_maxPlayers), 0, sysMsg, 44, 4);
+                                        Buffer.BlockCopy(BitConverter.GetBytes((uint)m_players.Count), 0, sysMsg, 48, 4);
+                                        m_recvQueue.Enqueue(new QueuedMessage { IdFrom = DPlayConstants.DPID_SYSMSG, IdTo = 0, Data = sysMsg });
                                     }
                                 }
-                                m_createdPlayerIdResult = assignedId;
+                                break;
                             }
-                            m_createPlayerAckEvent.Set();
-                            break;
-                        }
-                        case DPlayConstants.PKT_TCP_PLAYER_JOINED:
-                        {
-                            PlayerRecord pr = DeserializePlayerRecord(payload, false);
-                            lock (m_lock)
+                            case DPlayConstants.PKT_TCP_DATA_MSG:
                             {
-                                if (!m_players.ContainsKey(pr.PlayerId))
-                                    m_players[pr.PlayerId] = pr;
-                            }
-                            break;
-                        }
-                        case DPlayConstants.PKT_TCP_PLAYER_LEFT:
-                        {
-                            if (payload.Length >= 4)
-                            {
-                                uint pid = BitConverter.ToUInt32(payload, 0);
-                                bool had;
-                                lock (m_lock) { had = m_players.Remove(pid); }
-                                if (had) EnqueueSystemDestroyPlayer(pid);
-                            }
-                            break;
-                        }
-                        case DPlayConstants.PKT_TCP_SET_PLAYER_DATA:
-                        {
-                            if (payload.Length >= 8)
-                            {
-                                uint pid = BitConverter.ToUInt32(payload, 0);
-                                int dLen = BitConverter.ToInt32(payload, 4);
-                                byte[] d = SubArray(payload, 8, dLen);
-                                lock (m_lock)
+                                if (payload.Length >= 12)
                                 {
-                                    PlayerRecord rec;
-                                    if (m_players.TryGetValue(pid, out rec))
-                                        rec.RemoteData = d;
+                                    uint idFrom = BitConverter.ToUInt32(payload, 0);
+                                    uint idTo = BitConverter.ToUInt32(payload, 4);
+                                    int dLen = BitConverter.ToInt32(payload, 8);
+                                    if (dLen < 0 || dLen != payload.Length - 12)
+                                        throw new InvalidDataException("Invalid game message length.");
+                                    byte[] raw = SubArray(payload, 12, dLen);
+                                    ValidateWorldInitialization(idFrom, idTo, raw);
+                                    lock (m_lock)
+                                    {
+                                        m_recvQueue.Enqueue(new QueuedMessage { IdFrom = idFrom, IdTo = idTo, Data = raw });
+                                    }
                                 }
+                                break;
                             }
-                            break;
-                        }
-                        case DPlayConstants.PKT_TCP_SET_SESSION_DESC:
-                        {
-                            DiscoveredSession ds = ParseSessionPayload(payload, hostPeer.RemoteEndPoint, null);
-                            if (ds != null)
-                            {
-                                lock (m_lock)
-                                {
-                                    m_sessionFlags = ds.Flags;
-                                    m_maxPlayers = ds.MaxPlayers;
-                                    m_sessionName = ds.SessionName;
-                                    // Queue DPSYS_SETSESSIONDESC (0x0104 + 80-byte DPSESSIONDESC2)
-                                    byte[] sysMsg = new byte[84];
-                                    Buffer.BlockCopy(BitConverter.GetBytes(DPlayConstants.DPSYS_SETSESSIONDESC), 0, sysMsg, 0, 4);
-                                    Buffer.BlockCopy(BitConverter.GetBytes(80u), 0, sysMsg, 4, 4);
-                                    Buffer.BlockCopy(BitConverter.GetBytes(m_sessionFlags), 0, sysMsg, 8, 4);
-                                    Buffer.BlockCopy(m_guidInstance.ToByteArray(), 0, sysMsg, 12, 16);
-                                    Buffer.BlockCopy(m_guidApplication.ToByteArray(), 0, sysMsg, 28, 16);
-                                    Buffer.BlockCopy(BitConverter.GetBytes(m_maxPlayers), 0, sysMsg, 44, 4);
-                                    Buffer.BlockCopy(BitConverter.GetBytes((uint)m_players.Count), 0, sysMsg, 48, 4);
-                                    m_recvQueue.Enqueue(new QueuedMessage { IdFrom = DPlayConstants.DPID_SYSMSG, IdTo = 0, Data = sysMsg });
-                                }
-                            }
-                            break;
-                        }
-                        case DPlayConstants.PKT_TCP_DATA_MSG:
-                        {
-                            if (payload.Length >= 12)
-                            {
-                                uint idFrom = BitConverter.ToUInt32(payload, 0);
-                                uint idTo = BitConverter.ToUInt32(payload, 4);
-                                int dLen = BitConverter.ToInt32(payload, 8);
-                                byte[] raw = SubArray(payload, 12, dLen);
-                                lock (m_lock)
-                                {
-                                    m_recvQueue.Enqueue(new QueuedMessage { IdFrom = idFrom, IdTo = idTo, Data = raw });
-                                }
-                            }
-                            break;
+                            case WorldProtocol.Begin:
+                            case WorldProtocol.Chunk:
+                            case WorldProtocol.Commit:
+                                ReceiveWorldFrame(hostPeer, pktType, payload);
+                                break;
                         }
                     }
                 }
@@ -1860,14 +1960,21 @@ namespace Imp2Net
             }
             finally
             {
-                bool wasOpen = m_isOpen && m_running;
                 hostPeer.Close();
-                m_joinAckEvent.Set();
-                m_createPlayerAckEvent.Set();
-                if (wasOpen)
+                lock (m_lock)
                 {
-                    DPlayConfig.Log("Host connection lost -> queuing DPSYS_SESSIONLOST");
-                    EnqueueSystemSessionLost();
+                    if (m_hostConn == hostPeer)
+                    {
+                        bool wasOpen = m_isOpen && m_running;
+                        ClearWorldTransfer();
+                        m_joinAckEvent.Set();
+                        m_createPlayerAckEvent.Set();
+                        if (wasOpen)
+                        {
+                            DPlayConfig.Log("Host connection lost -> queuing DPSYS_SESSIONLOST");
+                            EnqueueSystemSessionLost();
+                        }
+                    }
                 }
             }
         }
@@ -1967,21 +2074,7 @@ namespace Imp2Net
 
         private static bool SendFrame(ClientPeer peer, byte pktType, byte[] payload)
         {
-            if (peer == null || peer.Closed) return false;
-            try
-            {
-                lock (peer.WriteLock)
-                {
-                    if (peer.Closed) return false;
-                    SendFrame(peer.Stream, pktType, payload);
-                }
-                return true;
-            }
-            catch
-            {
-                peer.Close();
-                return false;
-            }
+            return peer != null && peer.QueueFrame(pktType, payload);
         }
 
         private static void SendFrame(NetworkStream ns, byte pktType, byte[] payload)
@@ -2038,6 +2131,8 @@ namespace Imp2Net
             m_running = false;
             m_isOpen = false;
             m_isHost = false;
+            NativeWorldBridge.Clear(this);
+            ClearWorldTransfer();
 
             try { if (m_udpListener != null) m_udpListener.Close(); } catch { }
             m_udpListener = null;
@@ -2613,7 +2708,12 @@ namespace Imp2Net
             byte[] msg;
             int reqSize;
 
-            if (!o.Engine.PeekOrDequeueMessage(cap, out idFrom, out idTo, out msg, out reqSize))
+            if ((dwFlags & ~15u) != 0 || ((dwFlags & 4) != 0 && lpidFrom == IntPtr.Zero) ||
+                ((dwFlags & 2) != 0 && lpidTo == IntPtr.Zero)) return DPlayConstants.DPERR_INVALIDPARAM;
+            uint fromFilter = (dwFlags & 4) != 0 ? unchecked((uint)Marshal.ReadInt32(lpidFrom)) : 0;
+            uint toFilter = (dwFlags & 2) != 0 ? unchecked((uint)Marshal.ReadInt32(lpidTo)) : 0;
+            if ((dwFlags & 8) == 0 && o.Engine.ResumeOwnedSavedWorld()) return DPlayConstants.DPERR_NOMESSAGES;
+            if (!o.Engine.PeekOrDequeueMessage(cap, dwFlags, fromFilter, toFilter, out idFrom, out idTo, out msg, out reqSize))
                 return DPlayConstants.DPERR_NOMESSAGES;
 
             Marshal.WriteInt32(lpdwDataSize, reqSize);
@@ -2913,6 +3013,9 @@ namespace Imp2Net
 
     public static class Exports
     {
+        public static int Imp2LoadWorld(int saveId, IntPtr prefix) { return NativeWorldBridge.Load(saveId, prefix); }
+        public static int Imp2CanStart() { return NativeWorldBridge.CanStart(); }
+
         public static int DirectPlayCreate(IntPtr lpGUID, IntPtr lplpDP, IntPtr pUnk)
         {
             DPlayConfig.EnsureLoaded();

@@ -16,6 +16,8 @@
 .vtfixup [1] int32 fromunmanaged at VT_09
 .vtfixup [1] int32 fromunmanaged at VT_10
 .vtfixup [1] int32 fromunmanaged at VT_11
+.vtfixup [1] int32 fromunmanaged at VT_12
+.vtfixup [1] int32 fromunmanaged at VT_13
 
 .data VT_01 = int32(0)
 .data VT_02 = int32(0)
@@ -28,6 +30,8 @@
 .data VT_09 = int32(0)
 .data VT_10 = int32(0)
 .data VT_11 = int32(0)
+.data VT_12 = int32(0)
+.data VT_13 = int32(0)
 
 .class private abstract auto ansi sealed DPlayBridge extends [mscorlib]System.Object
 {
@@ -140,6 +144,42 @@
     }
 
     // Exported Win32 stdcall entry points
+    .method private hidebysig static int32 FwdLoadWorld(int32 saveId, native int prefix) cil managed noinlining
+    {
+        ldarg.0
+        ldarg.1
+        call int32 [Imp2Net]Imp2Net.Exports::Imp2LoadWorld(int32, native int)
+        ret
+    }
+
+    .method private hidebysig static int32 FwdCanStart() cil managed noinlining
+    {
+        call int32 [Imp2Net]Imp2Net.Exports::Imp2CanStart()
+        ret
+    }
+
+    .method public hidebysig static int32 modopt([mscorlib]System.Runtime.CompilerServices.CallConvCdecl)
+        Imp2LoadWorld(int32 saveId, native int prefix) cil managed
+    {
+        .vtentry 12 : 1
+        .export [12] as Imp2LoadWorld
+        call void DPlayBridge::Ensure()
+        ldarg.0
+        ldarg.1
+        call int32 DPlayBridge::FwdLoadWorld(int32, native int)
+        ret
+    }
+
+    .method public hidebysig static int32 modopt([mscorlib]System.Runtime.CompilerServices.CallConvStdcall)
+        Imp2CanStart() cil managed
+    {
+        .vtentry 13 : 1
+        .export [13] as Imp2CanStart
+        call void DPlayBridge::Ensure()
+        call int32 DPlayBridge::FwdCanStart()
+        ret
+    }
+
     .method public hidebysig static int32 modopt([mscorlib]System.Runtime.CompilerServices.CallConvStdcall)
         DirectPlayCreate(native int lpGUID, native int lplpDP, native int pUnk) cil managed
     {

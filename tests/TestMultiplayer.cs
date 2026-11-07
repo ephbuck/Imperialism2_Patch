@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Reflection;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 
@@ -77,6 +80,12 @@ internal static class TestMultiplayer
     private delegate int Receive_Del(IntPtr self, out uint idFrom, out uint idTo, uint flags, IntPtr data, ref int size); // +0x64
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate int Send_Del(IntPtr self, uint idFrom, uint idTo, uint flags, IntPtr data, uint size); // +0x68
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int CanStart_Del();
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate int LoadWorld_Del(int saveId, IntPtr prefix);
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate int StartGame_Del(IntPtr self);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate int SetPlayerData_Del(IntPtr self, uint id, IntPtr data, uint size, uint flags); // +0x74
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
@@ -356,6 +365,542 @@ internal static class TestMultiplayer
         return 0x112233;
     }
 
+    // Reflection supplies deterministic serializer/loader fixtures while exercising the real
+    // COM/socket path. These tests do not claim to execute the game's native deserializer.
+    private const BindingFlags AnyInstance = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+    private static Type ShimType(string name)
+    {
+        foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            Type type = assembly.GetType("Imp2Net." + name);
+            if (type != null) return type;
+        }
+        throw new Exception("Shim type not loaded: " + name);
+    }
+    private static object Engine(IntPtr dp)
+    {
+        object com = ShimType("ComRuntime").GetMethod("GetDP", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, new object[] { dp });
+        return com.GetType().GetField("Engine").GetValue(com);
+    }
+    private static object Call(object target, string name, params object[] args)
+    {
+        try { return target.GetType().GetMethod(name, AnyInstance).Invoke(target, args); }
+        catch (TargetInvocationException ex) { throw ex.InnerException; }
+    }
+    private static byte[] WorldOptions(int saveId)
+    {
+        byte[] data = new byte[160];
+        Buffer.BlockCopy(BitConverter.GetBytes(14), 0, data, 0, 4);
+        Buffer.BlockCopy(BitConverter.GetBytes(160), 0, data, 12, 4);
+        Buffer.BlockCopy(BitConverter.GetBytes(0x74696D65), 0, data, 16, 4);
+        Buffer.BlockCopy(BitConverter.GetBytes(saveId), 0, data, 0x60, 4);
+        Buffer.BlockCopy(BitConverter.GetBytes(0x72616E64), 0, data, 0x64, 4);
+        return data;
+    }
+    private static byte[] WorldBytes(int seed)
+    {
+        byte[] bytes = new byte[3 * 65536 + 113];
+        new Random(seed).NextBytes(bytes);
+        return bytes;
+    }
+    private static void CheckBytes(byte[] expected, byte[] actual, string name)
+    {
+        Check(expected.Length == actual.Length, name + " length");
+        for (int i = 0; i < expected.Length; i++) if (expected[i] != actual[i]) throw new Exception(name + " differs at " + i);
+    }
+    private static void SendBytes(IntPtr dp, uint from, uint to, byte[] data)
+    {
+        IntPtr buffer = Marshal.AllocHGlobal(data.Length);
+        try
+        {
+            Marshal.Copy(data, 0, buffer, data.Length);
+            Check(Vt<Send_Del>(dp, 0x68)(dp, from, to, 1, buffer, (uint)data.Length) == DP_OK, "Send fixture");
+        }
+        finally { Marshal.FreeHGlobal(buffer); }
+    }
+    private static void SubmitWorld(IntPtr dp, uint from, uint to, int saveId, string file)
+    {
+        object snapshot = Activator.CreateInstance(ShimType("WorldSnapshot"), AnyInstance, null, new object[] { file, saveId, false }, null);
+        try { Check((int)Call(Engine(dp), "SendWorldSnapshot", from, to, WorldOptions(saveId), snapshot) == DP_OK, "Queue world snapshot"); }
+        finally { ((IDisposable)snapshot).Dispose(); }
+    }
+    private static bool WorldsLoaded(IntPtr host)
+    {
+        object engine = Engine(host);
+        return (bool)engine.GetType().GetProperty("WorldsLoaded").GetValue(engine, null);
+    }
+    private static void WaitWorldsLoaded(IntPtr host)
+    {
+        Stopwatch clock = Stopwatch.StartNew();
+        while (!WorldsLoaded(host) && clock.ElapsedMilliseconds < 5000) Thread.Sleep(10);
+        Check(WorldsLoaded(host), "Host ingestion barrier cleared");
+    }
+    private static string ReceivedWorld(IntPtr dp)
+    {
+        object incoming = Engine(dp).GetType().GetField("m_incomingWorld", AnyInstance).GetValue(Engine(dp));
+        return (string)incoming.GetType().GetField("FinalPath").GetValue(incoming);
+    }
+    private static void SetWorldRoot(IntPtr dp, string path)
+    {
+        Engine(dp).GetType().GetField("m_worldRoot", AnyInstance).SetValue(Engine(dp), path);
+    }
+    private static byte[] WaitPeek(IntPtr dp)
+    {
+        Receive_Del receive = Vt<Receive_Del>(dp, 0x64);
+        Stopwatch clock = Stopwatch.StartNew();
+        uint from, to;
+        while (clock.ElapsedMilliseconds < 2000)
+        {
+            int size = 0;
+            int result = receive(dp, out from, out to, 9, IntPtr.Zero, ref size); // ALL | PEEK
+            if (result == DPERR_NOMESSAGES) { Thread.Sleep(10); continue; }
+            Check(result == DPERR_BUFFERTOOSMALL, "Peek size query");
+            IntPtr buffer = Marshal.AllocHGlobal(Math.Max(1, size));
+            try
+            {
+                Check(receive(dp, out from, out to, 9, buffer, ref size) == DP_OK, "Peek data query");
+                byte[] bytes = new byte[size]; Marshal.Copy(buffer, bytes, 0, size); return bytes;
+            }
+            finally { Marshal.FreeHGlobal(buffer); }
+        }
+        throw new Exception("Timed out peeking a message.");
+    }
+    private static void ExpectInvalid(Action action, string name)
+    {
+        bool rejected = false;
+        try { action(); } catch (InvalidDataException) { rejected = true; }
+        Check(rejected, name);
+    }
+    private static byte[] Manifest(Guid session, Guid transfer, byte[] bytes)
+    {
+        using (MemoryStream ms = new MemoryStream())
+        using (BinaryWriter writer = new BinaryWriter(ms))
+        using (SHA256 sha = SHA256.Create())
+        {
+            writer.Write(session.ToByteArray()); writer.Write(transfer.ToByteArray());
+            writer.Write(123); writer.Write(1u); writer.Write(2u); writer.Write((long)bytes.Length);
+            writer.Write(sha.ComputeHash(bytes)); writer.Write(0x72616E64); return ms.ToArray();
+        }
+    }
+    private static byte[] Chunk(Guid transfer, long offset, byte[] bytes)
+    {
+        using (MemoryStream ms = new MemoryStream())
+        using (BinaryWriter writer = new BinaryWriter(ms))
+        {
+            writer.Write(transfer.ToByteArray()); writer.Write(offset); writer.Write(bytes); return ms.ToArray();
+        }
+    }
+    private static void TestWorldValidation(string root)
+    {
+        Directory.CreateDirectory(root);
+        Type receiverType = ShimType("WorldReceiver");
+        Guid session = Guid.NewGuid(), transfer = Guid.NewGuid();
+        byte[] bytes = Encoding.ASCII.GetBytes("AN_ENGINE_SNAPSHOT_FIXTURE");
+        byte[] manifest = Manifest(session, transfer, bytes);
+        object receiver = Activator.CreateInstance(receiverType, new object[] { manifest, session, root });
+        Check((int)receiverType.GetField("OriginalMode").GetValue(receiver) == 0x72616E64,
+            "World manifest preserves generated-world lobby mode independently of the load hook");
+        try
+        {
+            string path = (string)receiverType.GetField("FinalPath").GetValue(receiver);
+            Check(!File.Exists(path), "Incomplete world never appears at final path");
+            ExpectInvalid(delegate { Call(receiver, "AddChunk", Chunk(transfer, 1, bytes)); }, "Wrong offset rejected");
+            ExpectInvalid(delegate { Call(receiver, "AddChunk", Chunk(Guid.NewGuid(), 0, bytes)); }, "Wrong transfer rejected");
+            ExpectInvalid(delegate { Call(receiver, "Commit", transfer.ToByteArray()); }, "Truncated transfer rejected");
+            byte[] corrupted = (byte[])bytes.Clone(); corrupted[0] ^= 0x55;
+            Call(receiver, "AddChunk", Chunk(transfer, 0, corrupted));
+            ExpectInvalid(delegate { Call(receiver, "Commit", transfer.ToByteArray()); }, "Checksum mismatch rejected");
+            Check(!File.Exists(path), "Corrupt world never published");
+        }
+        finally { ((IDisposable)receiver).Dispose(); }
+        Check(Directory.GetFiles(root).Length == 0, "Partial files removed after failed transfer");
+        byte[] oversized = (byte[])manifest.Clone();
+        Buffer.BlockCopy(BitConverter.GetBytes(32L * 1024 * 1024 + 1), 0, oversized, 44, 8);
+        ExpectInvalid(delegate
+        {
+            try { Activator.CreateInstance(receiverType, new object[] { oversized, session, root }); }
+            catch (TargetInvocationException ex) { throw ex.InnerException; }
+        }, "Oversized manifest rejected before writing");
+        ExpectInvalid(delegate
+        {
+            try { Activator.CreateInstance(receiverType, new object[] { manifest, Guid.NewGuid(), root }); }
+            catch (TargetInvocationException ex) { throw ex.InnerException; }
+        }, "Stale session manifest rejected");
+        string unavailableRoot = Path.Combine(root, "not-a-directory"); File.WriteAllText(unavailableRoot, "fixture");
+        bool diskFailure = false;
+        try { Activator.CreateInstance(receiverType, new object[] { manifest, session, unavailableRoot }); }
+        catch (TargetInvocationException ex) { diskFailure = ex.InnerException is IOException; }
+        Check(diskFailure, "Storage failure does not report successful receipt");
+        Console.WriteLine("[PASS] Test 9: World checksum, bounds, offsets, transfer IDs, atomic publication, and partial cleanup.");
+    }
+    private static void TestWorldTransfers(CoCreate_Del create, string root)
+    {
+        Guid dpClass = CLSID_DirectPlay, dpIid = IID_IDirectPlay4A, lobClass = CLSID_DirectPlayLobby, lobIid = IID_IDirectPlayLobby3A;
+        IntPtr host, hostLob, c1, c1Lob, c2, c2Lob;
+        create(ref dpClass, IntPtr.Zero, 1, ref dpIid, out host);
+        create(ref lobClass, IntPtr.Zero, 1, ref lobIid, out hostLob);
+        create(ref dpClass, IntPtr.Zero, 1, ref dpIid, out c1);
+        create(ref lobClass, IntPtr.Zero, 1, ref lobIid, out c1Lob);
+        create(ref dpClass, IntPtr.Zero, 1, ref dpIid, out c2);
+        create(ref lobClass, IntPtr.Zero, 1, ref lobIid, out c2Lob);
+        try
+        {
+            InitConn(host, hostLob, null); Guid session = HostOpen(host, "World transfer fixtures");
+            uint hostId = MakePlayer(host, "Host");
+            byte[] localOptions = WorldOptions(100);
+            SendBytes(host, hostId, hostId, localOptions);
+            uint localFrom, localTo;
+            byte[] localInitialization = WaitReceive(host, out localFrom, out localTo, 1000);
+            Check(localInitialization != null && localFrom == hostId && localTo == hostId,
+                "Host receives its own world options before remote clients exist");
+            CheckBytes(localOptions, localInitialization, "Local host initialization is preserved without snapshot capture");
+            InitConn(c1, c1Lob, "127.0.0.1:12357"); EnumGames(c1, 1000); JoinOpen(c1, session); uint id1 = MakePlayer(c1, "First");
+            InitConn(c2, c2Lob, "127.0.0.1:12357@Loopback"); EnumGames(c2, 1000); JoinOpen(c2, session); uint id2 = MakePlayer(c2, "Second");
+            Check(!WorldsLoaded(host), "Newly joined players block launch before the first snapshot is queued");
+            using (TcpClient legacy = new TcpClient("127.0.0.1", 12357))
+            {
+                legacy.ReceiveTimeout = 2000;
+                BinaryWriter writer = new BinaryWriter(legacy.GetStream());
+                writer.Write(0x32504D49u); writer.Write((byte)5); writer.Write(16); writer.Write(session.ToByteArray()); writer.Flush();
+                BinaryReader reader = new BinaryReader(legacy.GetStream());
+                Check(reader.ReadUInt32() == 0x32504D49u && reader.ReadByte() == 6 && reader.ReadInt32() == 1 && reader.ReadByte() == 0,
+                    "Legacy join explicitly rejected without entering staging");
+            }
+            SetWorldRoot(c1, Path.Combine(root, "first")); SetWorldRoot(c2, Path.Combine(root, "second"));
+            byte[] first = WorldBytes(21), second = WorldBytes(98);
+            string firstFile = Path.Combine(root, "first-source.imp"), secondFile = Path.Combine(root, "second-source.imp");
+            File.WriteAllBytes(firstFile, first); File.WriteAllBytes(secondFile, second);
+            // Distinct worlds expose global-buffer collisions and incorrect recipient routing.
+            SubmitWorld(host, hostId, id1, 101, firstFile); SubmitWorld(host, hostId, id2, 102, secondFile);
+            Check(!WorldsLoaded(host), "Host cannot launch while files are being transferred");
+            uint from, to;
+            byte[] init1 = WaitReceive(c1, out from, out to, 5000);
+            Check(init1 != null && init1.Length == 160 && from == hostId && to == id1, "First initialization delivered after commit");
+            Check(BitConverter.ToUInt32(init1, 0x64) == 0x72616E64, "Generated-world options retain native staging initialization before applying the map");
+            CheckBytes(first, File.ReadAllBytes(ReceivedWorld(c1)), "First client's world");
+            byte[] init2 = WaitReceive(c2, out from, out to, 5000);
+            Check(init2 != null && init2.Length == 160 && to == id2, "Second initialization delivered independently");
+            CheckBytes(second, File.ReadAllBytes(ReceivedWorld(c2)), "Second client's world");
+            Check(!WorldsLoaded(host), "Stored files alone do not clear ingestion barrier");
+            Call(Engine(c2), "ReportWorldLoaded", 102, true);
+            SendBytes(c2, id2, hostId, Encoding.ASCII.GetBytes("FAST_CLIENT_REMAINS_RESPONSIVE"));
+            Check(Encoding.ASCII.GetString(WaitPeek(host)) == "FAST_CLIENT_REMAINS_RESPONSIVE", "DPRECEIVE_PEEK inspects without consuming");
+            byte[] responsive = WaitReceive(host, out from, out to, 2000);
+            Check(responsive != null && Encoding.ASCII.GetString(responsive) == "FAST_CLIENT_REMAINS_RESPONSIVE", "Slow loader does not block other clients");
+            Check(!WorldsLoaded(host), "One loaded client cannot release another client's barrier");
+            Engine(c1).GetType().GetField("m_loadingWorld", AnyInstance).SetValue(Engine(c1), true);
+            byte[] reconnect = new byte[40];
+            Array.Copy(BitConverter.GetBytes(0x1F), 0, reconnect, 0, 4);
+            Array.Copy(BitConverter.GetBytes(40), 0, reconnect, 12, 4);
+            Array.Copy(BitConverter.GetBytes(0x7265706Fu), 0, reconnect, 28, 4);
+            SendBytes(c1, id1, hostId, reconnect);
+            byte[] savedName = (byte[])reconnect.Clone();
+            Array.Copy(BitConverter.GetBytes(0x6E616D65u), 0, savedName, 28, 4);
+            SendBytes(c1, id1, hostId, savedName);
+            byte[] savedStatus = new byte[52];
+            Array.Copy(BitConverter.GetBytes(0x25), 0, savedStatus, 0, 4);
+            Array.Copy(BitConverter.GetBytes(52), 0, savedStatus, 12, 4);
+            SendBytes(c1, id1, hostId, savedStatus);
+            SendBytes(c1, id1, hostId, Encoding.ASCII.GetBytes("LOAD_COMPLETED_EVENT"));
+            Call(Engine(c1), "ReportWorldLoaded", 101, true); WaitWorldsLoaded(host);
+            Check(Encoding.ASCII.GetString(WaitReceive(host, out from, out to, 2000)) == "LOAD_COMPLETED_EVENT",
+                "Saved-player reconnect traffic is suppressed; unrelated events follow the load ACK");
+            SendBytes(c1, id1, hostId, reconnect);
+            CheckBytes(reconnect, WaitReceive(host, out from, out to, 2000), "Reconnect messages outside snapshot ingestion remain intact");
+            // A later revision must replace the prior initialization, not reuse its bytes or ACK.
+            SubmitWorld(host, hostId, id1, 103, secondFile);
+            Check(WaitReceive(c1, out from, out to, 5000) != null, "Sequential world revision delivered");
+            CheckBytes(second, File.ReadAllBytes(ReceivedWorld(c1)), "Sequential revision");
+            Call(Engine(c1), "ReportWorldLoaded", 103, false);
+            byte[] drop = WaitReceive(host, out from, out to, 5000);
+            Check(drop != null && from == 0 && BitConverter.ToUInt32(drop, 0) == 5, "Failed native ingestion disconnects the affected client");
+            WaitWorldsLoaded(host);
+            InitConn(c1, c1Lob, "127.0.0.1:12357"); EnumGames(c1, 1000); JoinOpen(c1, session); id1 = MakePlayer(c1, "Interrupted");
+            string interruptedRoot = Path.Combine(root, "interrupted"); SetWorldRoot(c1, interruptedRoot);
+            string changingFile = Path.Combine(root, "changing-source.imp"); File.WriteAllBytes(changingFile, first);
+            object changingSnapshot = Activator.CreateInstance(ShimType("WorldSnapshot"), AnyInstance, null,
+                new object[] { changingFile, 104, false }, null);
+            try
+            {
+                // Force EOF after a real chunk has crossed the connection, before COMMIT.
+                File.WriteAllBytes(changingFile, new byte[65536]);
+                Check((int)Call(Engine(host), "SendWorldSnapshot", hostId, id1, WorldOptions(104), changingSnapshot) == DP_OK,
+                    "Queue interrupted-transfer fixture");
+            }
+            finally { ((IDisposable)changingSnapshot).Dispose(); }
+            byte[] lost = WaitReceive(c1, out from, out to, 5000);
+            Check(lost != null && from == 0 && BitConverter.ToUInt32(lost, 0) == 0x21, "Mid-transfer disconnect reports session lost");
+            Check(!Directory.Exists(interruptedRoot) || Directory.GetFiles(interruptedRoot).Length == 0,
+                "Interrupted transfer leaves neither partial nor published worlds");
+            Check(WaitReceive(host, out from, out to, 5000) != null, "Host observes interrupted client departure");
+            // Reuse the same COM objects immediately while old socket readers are unwinding.
+            Vt<Close_Del>(c2, 0x10)(c2); Vt<Close_Del>(host, 0x10)(host);
+            for (int round = 0; round < 3; round++)
+            {
+                InitConn(host, hostLob, null); session = HostOpen(host, "Rehost " + round); hostId = MakePlayer(host, "Host");
+                InitConn(c2, c2Lob, "127.0.0.1:12357"); EnumGames(c2, 1000); JoinOpen(c2, session); id2 = MakePlayer(c2, "Rejoining");
+                SubmitWorld(host, hostId, id2, 500 + round, firstFile);
+                Check(WaitReceive(c2, out from, out to, 5000) != null, "Same-object rehost world " + round);
+                CheckBytes(first, File.ReadAllBytes(ReceivedWorld(c2)), "Rehost snapshot " + round);
+                Call(Engine(c2), "ReportWorldLoaded", 500 + round, true); WaitWorldsLoaded(host);
+                Vt<Close_Del>(c2, 0x10)(c2); Vt<Close_Del>(host, 0x10)(host);
+            }
+            Console.WriteLine("[PASS] Test 10: Concurrent multi-chunk worlds, independent clients, ingestion barrier, sequential revisions, and load failure.");
+        }
+        finally
+        {
+            foreach (IntPtr p in new IntPtr[] { c1, c2, host }) { Vt<Close_Del>(p, 0x10)(p); Vt<Release_Del>(p, 8)(p); }
+            foreach (IntPtr p in new IntPtr[] { c1Lob, c2Lob, hostLob }) Vt<Release_Del>(p, 8)(p);
+        }
+    }
+
+    private static int RunWorldClient(string dllPath, string root)
+    {
+        Environment.SetEnvironmentVariable("IMP2_PORT", "12357");
+        IntPtr module = LoadLibraryA(dllPath);
+        CoCreate_Del create = (CoCreate_Del)Marshal.GetDelegateForFunctionPointer(NativeWrap(GetProcAddress(module, "Imp2CoCreateInstance")), typeof(CoCreate_Del));
+        Guid gc = CLSID_DirectPlay, gi = IID_IDirectPlay4A, lc = CLSID_DirectPlayLobby, li = IID_IDirectPlayLobby3A;
+        IntPtr dp, lobby;
+        create(ref gc, IntPtr.Zero, 1, ref gi, out dp); create(ref lc, IntPtr.Zero, 1, ref li, out lobby);
+        try
+        {
+            InitConn(dp, lobby, "127.0.0.1:12357");
+            var games = EnumGames(dp, 2000); Check(games.Count == 1, "World worker discovery");
+            JoinOpen(dp, games[0].Key); uint pid = MakePlayer(dp, "World worker"); SetWorldRoot(dp, root);
+            SendBytes(dp, pid, 1, Encoding.ASCII.GetBytes("WORLD_WORKER_READY"));
+            uint from, to; byte[] initial = WaitReceive(dp, out from, out to, 5000);
+            Check(initial != null && initial.Length == 160, "World worker initialization");
+            CheckBytes(WorldBytes(405), File.ReadAllBytes(ReceivedWorld(dp)), "Cross-process snapshot");
+            Call(Engine(dp), "ReportWorldLoaded", 405, true);
+            SendBytes(dp, pid, 1, Encoding.ASCII.GetBytes("WORLD_WORKER_VERIFIED"));
+            Check(WaitReceive(dp, out from, out to, 5000) != null, "World worker completion handshake");
+            return 0;
+        }
+        finally
+        {
+            Vt<Close_Del>(dp, 0x10)(dp); Vt<Release_Del>(dp, 8)(dp); Vt<Release_Del>(lobby, 8)(lobby);
+        }
+    }
+    private static void TestCrossProcessWorld(CoCreate_Del create, string dllPath, string root)
+    {
+        Guid gc = CLSID_DirectPlay, gi = IID_IDirectPlay4A, lc = CLSID_DirectPlayLobby, li = IID_IDirectPlayLobby3A;
+        IntPtr host, lobby;
+        create(ref gc, IntPtr.Zero, 1, ref gi, out host); create(ref lc, IntPtr.Zero, 1, ref li, out lobby);
+        Process worker = null;
+        try
+        {
+            InitConn(host, lobby, null); HostOpen(host, "Cross-process world"); uint pid = MakePlayer(host, "World host");
+            ProcessStartInfo start = new ProcessStartInfo(typeof(TestMultiplayer).Assembly.Location,
+                "--world-client-worker \"" + dllPath + "\" \"" + Path.Combine(root, "child-save") + "\"");
+            start.UseShellExecute = false; start.CreateNoWindow = true; start.RedirectStandardError = true;
+            worker = Process.Start(start);
+            uint from, to; byte[] ready = WaitReceive(host, out from, out to, 5000);
+            Check(ready != null && Encoding.ASCII.GetString(ready) == "WORLD_WORKER_READY", "World worker ready");
+            string snapshot = Path.Combine(root, "cross-process-source.imp"); File.WriteAllBytes(snapshot, WorldBytes(405));
+            SubmitWorld(host, pid, from, 405, snapshot);
+            byte[] verified = WaitReceive(host, out from, out to, 5000);
+            Check(verified != null && Encoding.ASCII.GetString(verified) == "WORLD_WORKER_VERIFIED", "Separate process verified transferred bytes");
+            WaitWorldsLoaded(host); SendBytes(host, pid, from, new byte[] { 1 });
+            Check(worker.WaitForExit(5000), "World worker exited");
+            Check(worker.ExitCode == 0, "World worker success: " + worker.StandardError.ReadToEnd());
+            Console.WriteLine("[PASS] Test 11: Cross-process world transfer into a separate save directory.");
+        }
+        finally
+        {
+            if (worker != null) { if (!worker.HasExited) worker.Kill(); worker.Dispose(); }
+            Vt<Close_Del>(host, 0x10)(host); Vt<Release_Del>(host, 8)(host); Vt<Release_Del>(lobby, 8)(lobby);
+        }
+    }
+
+    private static void TestNativeWorldHooks(string exePath, IntPtr module)
+    {
+        TestNativeSavedCountryRoles();
+        // Native host writers append private data that remote client readers do not
+        // consume. Exercise the scoped override against actual unmanaged vtables,
+        // including two different classes, aliases, an unrelated method, and unwind.
+        IntPtr countryA = Marshal.AllocHGlobal(4), countryB = Marshal.AllocHGlobal(4);
+        IntPtr tableA = Marshal.AllocHGlobal(0x410), tableB = Marshal.AllocHGlobal(0x410);
+        IntPtr writers = VirtualAlloc(IntPtr.Zero, new UIntPtr(64), 0x3000, 0x40);
+        try
+        {
+            byte[] zero = new byte[0x410];
+            Marshal.Copy(zero, 0, tableA, zero.Length); Marshal.Copy(zero, 0, tableB, zero.Length);
+            // thiscall methods returning distinctive serialization results.
+            byte[] methods = { 0xB8,1,0,0,0,0xC3, 0xB8,2,0,0,0,0xC3, 0xB8,3,0,0,0,0xC3 };
+            Marshal.Copy(methods, 0, writers, methods.Length);
+            Marshal.WriteIntPtr(tableA, 0x14, writers); Marshal.WriteIntPtr(tableA, 0x18, writers);
+            Marshal.WriteIntPtr(tableB, 0x14, IntPtr.Add(writers, 6)); Marshal.WriteIntPtr(tableB, 0x18, IntPtr.Add(writers, 6));
+            Marshal.WriteIntPtr(countryA, tableA); Marshal.WriteIntPtr(countryB, tableB);
+            try
+            {
+                using ((IDisposable)Activator.CreateInstance(ShimType("NativeCountryWriteScope"),
+                    new object[] { new IntPtr[] { countryA, countryB, countryA, IntPtr.Zero }, IntPtr.Add(writers, 12), 0x410 }))
+                {
+                    Check(Vt<StartGame_Del>(countryA, 0x14)(countryA) == 3 && Vt<StartGame_Del>(countryB, 0x14)(countryB) == 3,
+                        "Host and AI country snapshots use the remote-compatible writer");
+                    Check(Vt<StartGame_Del>(countryA, 0x18)(countryA) == 1 && Vt<StartGame_Del>(countryB, 0x18)(countryB) == 2,
+                        "Snapshot override preserves unrelated native methods");
+                    Check(Marshal.ReadIntPtr(tableA, 0x14) == writers, "Shared original table remains unchanged");
+                    throw new IOException("Simulated native save failure");
+                }
+            }
+            catch (IOException) { }
+            Check(Marshal.ReadIntPtr(countryA) == tableA && Marshal.ReadIntPtr(countryB) == tableB &&
+                Vt<StartGame_Del>(countryA, 0x14)(countryA) == 1 && Vt<StartGame_Del>(countryB, 0x14)(countryB) == 2,
+                "All original country behavior is restored after failed snapshot capture");
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(countryA); Marshal.FreeHGlobal(countryB);
+            Marshal.FreeHGlobal(tableA); Marshal.FreeHGlobal(tableB); VirtualFree(writers, UIntPtr.Zero, 0x8000);
+        }
+        CanStart_Del exportedCheck = (CanStart_Del)Marshal.GetDelegateForFunctionPointer(NativeWrap(GetProcAddress(module, "Imp2CanStart")), typeof(CanStart_Del));
+        LoadWorld_Del exportedLoad = (LoadWorld_Del)Marshal.GetDelegateForFunctionPointer(NativeWrap(GetProcAddress(module, "Imp2LoadWorld")), typeof(LoadWorld_Del));
+        Check(exportedCheck() == 1, "No active host means no pending world barrier");
+        for (int i = 0; i < 100; i++) Check(exportedLoad(123, IntPtr.Zero) == 0, "cdecl loader export fails closed without matching world");
+        object nativeHost = Activator.CreateInstance(ShimType("DPlaySessionEngine"));
+        Type bridge = ShimType("NativeWorldBridge");
+        bridge.GetMethod("SetHost").Invoke(null, new object[] { nativeHost });
+        try
+        {
+            for (int i = 0; i < 100; i++)
+                Check(exportedLoad(123, IntPtr.Zero) == 1, "Host retains its generated map at the common lounge hook");
+            Check(exportedLoad(123, new IntPtr(1)) == 0,
+                "cdecl export forwards the prefix; native host file loading rejects a non-game process safely");
+        }
+        finally { bridge.GetMethod("Clear").Invoke(null, new object[] { nativeHost }); }
+        Check(exportedLoad(123, IntPtr.Zero) == 0, "Closing host restores missing-snapshot failure handling");
+        byte[] exe = File.ReadAllBytes(exePath);
+        Check(exe[0x18B9AD] == 0xE8 && 0x58C5B2 + BitConverter.ToInt32(exe, 0x18B9AE) == 0x6E8890, "Client load hook target");
+        Check(exe[0x18A540] == 0xE9 && 0x58B145 + BitConverter.ToInt32(exe, 0x18A541) == 0x6E8900, "StartGame guard target");
+        IntPtr mem = VirtualAlloc(IntPtr.Zero, new UIntPtr(512), 0x3000, 0x40);
+        IntPtr instance = Marshal.AllocHGlobal(128);
+        bool allow = false;
+        CanStart_Del check = delegate { return allow ? 1 : 0; };
+        try
+        {
+            byte[] guard = new byte[29]; Array.Copy(exe, 0x2E7D00, guard, 0, guard.Length);
+            int baseAddress = mem.ToInt32();
+            Array.Copy(BitConverter.GetBytes(Marshal.GetFunctionPointerForDelegate(check).ToInt32() - baseAddress - 6), 0, guard, 2, 4);
+            Array.Copy(BitConverter.GetBytes(64 - 26), 0, guard, 22, 4);
+            Marshal.Copy(guard, 0, mem, guard.Length);
+            // Simulated native continuation unwinds StartGame's original local stack frame.
+            byte[] continuation = new byte[] { 0x83,0xC4,0x1C, 0xB8,1,0,0,0, 0xC3 };
+            Marshal.Copy(continuation, 0, new IntPtr(baseAddress + 64), continuation.Length);
+            StartGame_Del startGame = (StartGame_Del)Marshal.GetDelegateForFunctionPointer(mem, typeof(StartGame_Del));
+            Marshal.WriteInt32(instance, 0x40, 0x12345678);
+            Check(startGame(instance) == 0 && Marshal.ReadInt32(instance, 0x40) == 0x12345678, "Pending world prevents native start without mutating this");
+            allow = true;
+            Check(startGame(instance) == 1 && Marshal.ReadInt32(instance, 0x40) == 0, "Allowed start executes stolen instructions and preserves native stack/ECX");
+            Check(exe[0x18B9B5] == 0xE9 && 0x58C5BA + BitConverter.ToInt32(exe, 0x18B9B6) == 0x6E8940,
+                "Snapshot load result uses the lounge-aware continuation");
+            byte[] resultThunk = new byte[21]; Array.Copy(exe, 0x2E7D40, resultThunk, 0, resultThunk.Length);
+            Check(0x6E8948 + BitConverter.ToInt32(resultThunk, 4) == 0x58C57B &&
+                0x6E8950 + BitConverter.ToInt32(resultThunk, 12) == 0x58C6CB &&
+                0x6E8955 + BitConverter.ToInt32(resultThunk, 17) == 0x58C5BD, "All native load-result targets");
+            Array.Copy(BitConverter.GetBytes(240 - (128 + 8)), 0, resultThunk, 4, 4);
+            Array.Copy(BitConverter.GetBytes(256 - (128 + 16)), 0, resultThunk, 12, 4);
+            Array.Copy(BitConverter.GetBytes(224 - (128 + 21)), 0, resultThunk, 17, 4);
+            Marshal.Copy(resultThunk, 0, IntPtr.Add(mem, 128), resultThunk.Length);
+            byte[] entry = { 0x8B,0x44,0x24,4,0xE9,0xB7,0xFF,0xFF,0xFF }; // result from cdecl arg, jump back to +128
+            Marshal.Copy(entry, 0, IntPtr.Add(mem, 192), entry.Length);
+            foreach (int offset in new int[] { 224,240,256 })
+            {
+                byte[] ret = { 0xB8,0,0,0,0,0xC3 };
+                Array.Copy(BitConverter.GetBytes(offset), 0, ret, 1, 4);
+                Marshal.Copy(ret, 0, IntPtr.Add(mem, offset), ret.Length);
+            }
+            LoadWorld_Del route = (LoadWorld_Del)Marshal.GetDelegateForFunctionPointer(IntPtr.Add(mem, 192), typeof(LoadWorld_Del));
+            Check(route(0, IntPtr.Zero) == 224 && route(1, IntPtr.Zero) == 256 && route(2, IntPtr.Zero) == 240,
+                "Native loader routes failure, normal success, and lobby success independently");
+            byte[] mapThunk = new byte[42]; Array.Copy(exe, 0x2E7D60, mapThunk, 0, mapThunk.Length);
+            Check(0x6E8980 + BitConverter.ToInt32(mapThunk, 28) == 0x58C5BD &&
+                0x6E898A + BitConverter.ToInt32(mapThunk, 38) == 0x58C580,
+                "Pre-preview map hook has valid failure and continuation targets");
+            bool mapAccepted = false; int loadedSave = 0;
+            LoadWorld_Del applyMap = delegate(int id, IntPtr prefix) { loadedSave = id; return mapAccepted ? 1 : 0; };
+            Marshal.WriteInt32(instance, 0x60, 6789); Marshal.WriteIntPtr(mem, 400, instance);
+            Array.Copy(BitConverter.GetBytes(baseAddress + 400), 0, mapThunk, 6, 4);
+            Array.Copy(BitConverter.GetBytes(Marshal.GetFunctionPointerForDelegate(applyMap).ToInt32() - (baseAddress + 320 + 18)), 0, mapThunk, 14, 4);
+            Array.Copy(BitConverter.GetBytes(224 - (320 + 32)), 0, mapThunk, 28, 4);
+            Array.Copy(BitConverter.GetBytes(256 - (320 + 42)), 0, mapThunk, 38, 4);
+            Marshal.Copy(mapThunk, 0, IntPtr.Add(mem, 320), mapThunk.Length);
+            byte[] mapEntry = { 0x56,0x53,0x8B,0xD9,0xE8,0,0,0,0,0x5B,0x5E,0xC3 };
+            Array.Copy(BitConverter.GetBytes(320 - (448 + 9)), 0, mapEntry, 5, 4);
+            Marshal.Copy(mapEntry, 0, IntPtr.Add(mem, 448), mapEntry.Length);
+            StartGame_Del mapHook = (StartGame_Del)Marshal.GetDelegateForFunctionPointer(IntPtr.Add(mem, 448), typeof(StartGame_Del));
+            Check(mapHook(instance) == 224 && loadedSave == 6789, "Map hook calls the cdecl loader with the active world identifier and handles failure");
+            mapAccepted = true;
+            Check(mapHook(instance) == 256, "Map hook applies the committed map before the native lounge continuation");
+            Check(exe[0x18ABFC] == 0xE9 && 0x58B801 + BitConverter.ToInt32(exe, 0x18ABFD) == 0x6E8990,
+                "Saved-country reservation check uses the reclaim guard");
+            byte[] seatThunk = new byte[22]; Array.Copy(exe, 0x2E7D90, seatThunk, 0, seatThunk.Length);
+            Check(0x6E8999 + BitConverter.ToInt32(seatThunk, 5) == 0x58B979 &&
+                0x6E89A1 + BitConverter.ToInt32(seatThunk, 13) == 0x58B979 &&
+                0x6E89A6 + BitConverter.ToInt32(seatThunk, 18) == 0x58B804,
+                "Reserved and empty seats use the native claim path; other owners retain requester validation");
+            Array.Copy(BitConverter.GetBytes(224 - (128 + 9)), 0, seatThunk, 5, 4);
+            Array.Copy(BitConverter.GetBytes(224 - (128 + 17)), 0, seatThunk, 13, 4);
+            Array.Copy(BitConverter.GetBytes(256 - (128 + 22)), 0, seatThunk, 18, 4);
+            Marshal.Copy(seatThunk, 0, IntPtr.Add(mem, 128), seatThunk.Length);
+            Check(route(-2, IntPtr.Zero) == 224 && route(0, IntPtr.Zero) == 224,
+                "Disconnected saved player and empty country can be claimed");
+            foreach (int owner in new int[] { 1, 2, 42, -1, -3 })
+                Check(route(owner, IntPtr.Zero) == 256, "Existing live/special owner is never bypassed: " + owner);
+            GC.KeepAlive(applyMap);
+            GC.KeepAlive(check);
+        }
+        finally { Marshal.FreeHGlobal(instance); VirtualFree(mem, UIntPtr.Zero, 0x8000); }
+        Console.WriteLine("[PASS] Test 12: Native cdecl loader export, hook targets, and StartGame guard execution.");
+    }
+
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void InitializeCountry_Del(IntPtr simulation, int country, int initialize);
+    private static void TestNativeSavedCountryRoles()
+    {
+        IntPtr simulation = Marshal.AllocHGlobal(512), table = Marshal.AllocHGlobal(0x88);
+        IntPtr country = Marshal.AllocHGlobal(2), code = VirtualAlloc(IntPtr.Zero, new UIntPtr(64), 0x3000, 0x40);
+        try
+        {
+            byte[] zero = new byte[512]; Marshal.Copy(zero, 0, simulation, zero.Length);
+            Marshal.Copy(zero, 0, table, 0x88); Marshal.WriteIntPtr(simulation, table);
+            // Native thiscall fixture observes the configured role and second
+            // argument, then unwinds both arguments just like InitCountry.
+            byte[] observer = { 0x8B,0x44,0x24,4, 0x0F,0xBF,0x84,0x41,0x34,1,0,0,
+                0x89,0x41,0x20, 0x8B,0x44,0x24,8, 0x89,0x41,0x24, 0xC2,8,0 };
+            Marshal.Copy(observer, 0, code, observer.Length); Marshal.WriteIntPtr(table, 0x2C, code);
+            foreach (int selected in new int[] { 0, 2, 5 })
+            {
+                try
+                {
+                    using ((IDisposable)Activator.CreateInstance(ShimType("NativeCountryRoleScope"),
+                        new object[] { simulation, selected, country }))
+                    {
+                        for (int pass = 0; pass < 20; pass++)
+                            for (int i = 5; i >= 0; i--)
+                            {
+                                Marshal.WriteInt16(simulation, 0x134 + i * 2, (short)(i == 1 ? 1 : 4));
+                                Marshal.WriteInt16(country, 1); // host identity in the saved file
+                                Vt<InitializeCountry_Del>(simulation, 0x2C)(simulation, i, 37);
+                                Check(Marshal.ReadInt32(simulation, 0x20) == (i == selected ? 1 : 4) &&
+                                    Marshal.ReadInt16(country) == selected && Marshal.ReadInt32(simulation, 0x24) == 37,
+                                    "Saved-country construction binds only the claimed client country and preserves native arguments");
+                            }
+                        throw new IOException("Simulated saved-load failure");
+                    }
+                }
+                catch (IOException) { }
+                Check(Marshal.ReadIntPtr(simulation) == table && Marshal.ReadIntPtr(table, 0x2C) == code,
+                    "Country initializer table is restored after saved-load unwind");
+            }
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(simulation); Marshal.FreeHGlobal(table); Marshal.FreeHGlobal(country);
+            VirtualFree(code, UIntPtr.Zero, 0x8000);
+        }
+    }
+
     private static void VerifyExeX86Thunk(string exePath)
     {
         byte[] exe = System.IO.File.ReadAllBytes(exePath);
@@ -431,6 +976,7 @@ internal static class TestMultiplayer
             {
                 return RunClientWorker(args[1], args[2]);
             }
+            if (args.Length >= 3 && args[0] == "--world-client-worker") return RunWorldClient(args[1], args[2]);
 
             Environment.SetEnvironmentVariable("IMP2_PORT", "12357");
             Environment.SetEnvironmentVariable("IMP2_BIND", "All");
@@ -440,12 +986,12 @@ internal static class TestMultiplayer
             IntPtr hMod = LoadLibraryA(dllPath);
             Check(hMod != IntPtr.Zero, "LoadLibraryA(dplayx.dll)");
 
-            for (int ord = 1; ord <= 11; ord++)
+            for (int ord = 1; ord <= 13; ord++)
             {
                 IntPtr p = GetProcAddress(hMod, new IntPtr(ord));
                 Check(p != IntPtr.Zero, "Export Ordinal #" + ord);
             }
-            Console.WriteLine("[PASS] Test 1: All 11 Win32 PE exports (#1..#11) verified.");
+            Console.WriteLine("[PASS] Test 1: All 13 Win32 PE exports (#1..#13) verified.");
 
             DPEnumA_Del dpEnum = (DPEnumA_Del)Marshal.GetDelegateForFunctionPointer(NativeWrap(GetProcAddress(hMod, new IntPtr(2))), typeof(DPEnumA_Del));
             int enumCount = 0;
@@ -665,6 +1211,7 @@ internal static class TestMultiplayer
 
             // Test 7: Execute exact 39-byte native x86 DPlayCoCreateThunk from patched Imperialism II.exe
             string exePath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(dllPath), "Imperialism II.exe");
+            if (!File.Exists(exePath)) exePath = Path.Combine(Path.GetDirectoryName(dllPath), "ImpII.exe");
             VerifyExeX86Thunk(exePath);
             Console.WriteLine("[PASS] Test 7: Native x86 DPlayCoCreateThunk execution (primary + fallback branches) verified.");
 
@@ -680,6 +1227,7 @@ internal static class TestMultiplayer
             psi.FileName = typeof(TestMultiplayer).Assembly.Location;
             psi.Arguments = "--client-worker \"" + dllPath + "\" 12357";
             psi.UseShellExecute = false;
+            psi.CreateNoWindow = true;
             psi.RedirectStandardOutput = true;
             psi.RedirectStandardError = true;
             Process child = Process.Start(psi);
@@ -696,6 +1244,7 @@ internal static class TestMultiplayer
             Marshal.FreeHGlobal(pWelcome);
 
             bool exited = child.WaitForExit(5000);
+            if (!exited) { child.Kill(); throw new Exception("Client worker timed out."); }
             string childErr = child.StandardError.ReadToEnd();
             Check(exited && child.ExitCode == 0, "Child OS process exited cleanly: " + childErr);
 
@@ -707,6 +1256,12 @@ internal static class TestMultiplayer
             Vt<Release_Del>(mpHostDP, 0x08)(mpHostDP);
             Vt<Release_Del>(mpHostLob, 0x08)(mpHostLob);
             Console.WriteLine("[PASS] Test 8: Separate OS process Host <-> Client multiplayer session verified.");
+
+            string worldTestRoot = Path.Combine(Path.GetDirectoryName(typeof(TestMultiplayer).Assembly.Location), "world-tests-" + Guid.NewGuid().ToString("N"));
+            TestWorldValidation(Path.Combine(worldTestRoot, "validation"));
+            TestWorldTransfers(coCreate, worldTestRoot);
+            TestCrossProcessWorld(coCreate, dllPath, worldTestRoot);
+            TestNativeWorldHooks(exePath, hMod);
 
             Console.WriteLine("\nALL MULTIPLAYER INTEGRATION TESTS PASSED SUCCESSFULLY!");
             return 0;

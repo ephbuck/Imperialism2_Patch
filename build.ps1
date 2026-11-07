@@ -17,7 +17,7 @@ Write-Host "=== 1. Compiling Imp2Net.dll (x86) ==="
 $imp2NetDll = Join-Path $objDir "Imp2Net.dll"
 & $csc /nologo /platform:x86 /target:library /optimize+ `
     /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll `
-    /out:$imp2NetDll (Join-Path $srcDir "Imp2Net.cs")
+    /out:$imp2NetDll (Join-Path $srcDir "Imp2Net.cs") (Join-Path $srcDir "WorldSync.cs")
 if ($LASTEXITCODE -ne 0) { throw "csc.exe failed with exit code $LASTEXITCODE" }
 
 Write-Host "=== 2. Assembling standalone 32-bit dplayx.dll (with embedded Imp2Net.dll) ==="
@@ -69,7 +69,11 @@ if (Test-Path -LiteralPath $gameDir) {
     Write-Host "=== 3. Patching & Deploying to Working Game Folder ==="
     $gameExe = Join-Path $gameDir "Imperialism II.exe"
     & (Join-Path $srcDir "PatchExe.ps1") -InputExe $gameExe -OutputExe $gameExe
-    Copy-Item -LiteralPath $gameExe -Destination (Join-Path $repoRoot "ImpII.exe") -Force
+    $rootExe = Join-Path $repoRoot "ImpII.exe"
+    if (-not (Test-Path -LiteralPath $rootExe) -or
+        (Get-FileHash -LiteralPath $gameExe).Hash -ne (Get-FileHash -LiteralPath $rootExe).Hash) {
+        Copy-Item -LiteralPath $gameExe -Destination $rootExe -Force
+    }
     Copy-Item -LiteralPath $builtDplayx -Destination (Join-Path $gameDir "dplayx.dll") -Force
     $gameIni = Join-Path $gameDir "dplayx.ini"
     if (-not (Test-Path $gameIni)) {
