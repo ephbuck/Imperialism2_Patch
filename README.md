@@ -33,65 +33,20 @@ Original *Imperialism II* (1999) relied on Windows 98 DirectPlay 4 (`IDirectPlay
 
 ---
 
-### World Synchronization (gameplay validation in progress)
+### 2. Map & Saved-Game Synchronization (`dplayx.dll` + `ImpII.exe`)
+Joining players now receive the host's actual world instead of relying on matching local files:
 
-Both host and clients must use the same updated EXE and DLL. The versioned join
-handshake rejects older peers rather than allowing an incompatible transfer.
+* **Generated, scenario, and saved worlds:** When the host sends the initial game options, the host's current map (or, for a saved game, a full native save) is captured on the game thread and streamed to each joining client over the existing TCP connection. No extra ports are needed.
+* **Verified transfers:** Snapshots are sent in 64 KiB chunks, checked against their advertised length and SHA-256 hash, and atomically written beneath `Save\NetSync` before the client's patched loader opens that exact file. Corrupt, incomplete, or timed-out transfers (30 s without progress, 32 MiB limit) disconnect the affected client cleanly; rejoining starts a fresh transfer.
+* **Start barrier:** The host's **Start** button is held until every connected player has loaded the transferred world. Each client has an independent, bounded send queue, so one slow client does not stall the others.
+* **Resuming saved games:** Countries belonging to disconnected players in a saved game can be reclaimed from the lobby (countries held by a connected player remain protected). After the host confirms the claim, the client enters the saved game with that country as its local player.
+* **Version check:** Host and clients must run the same patch version; the join handshake rejects mismatched peers instead of attempting an incompatible transfer.
 
-When the host sends initial game options, the shim captures the current world
-on the game thread. Generated/scenario lobbies use the native map serializer;
-already-loaded worlds use a full native save. It transfers that immutable
-snapshot in 64 KiB chunks on the existing TCP connection. Clients verify
-the total length and SHA-256, then atomically publish the file beneath
-`Save\NetSync`. A patched client loader opens that exact snapshot; it does not
-guess a `cli_*.imp` filename. A staging map is applied after native staging setup
-and before its preview appears. Full snapshot capture uses the base great-power writer expected by remote client countries,
-omitting host-only and AI extensions. Private virtual-table copies override
-only that writer during the synchronous save and are restored on unwind. Full
-loading preserves the live lobby phase and ownership; saved-player reconnect
-messages are suppressed during ingestion. Protocol version 3 carries the host's
-original world mode, so loading does not change a generated lobby into a saved-game reconnect.
-Saved countries marked as disconnected can be claimed again in the lobby;
-countries owned by a connected player retain the engine's existing protection.
-Local host initialization keeps its ordinary message delivery and native file
-loader; only remote clients consume downloaded snapshots.
-After the host confirms a saved-country claim, the client reloads its committed
-snapshot with that country configured as its local player and enters the native
-saved-game screen. This runs on the game thread and preserves live ownership;
-the saved host's country remains remote on the client.
+> **Status:** Two-player games on generated maps and resumed saved games have been played through multiple turns. Scenario maps and games with three or more human players have not yet been verified. Joining a match that is already in progress remains unsupported, as in the original game.
 
-The host holds initialization until the client has committed the file and holds
-later messages for that client until native loading reports success. The native
-StartGame entry is gated until every remote player has loaded its world. Each
-client has an independent, bounded writer queue, so a stalled transfer does not
-block other clients or network readers. Failed, corrupt, or timed-out transfers
-disconnect the affected client; rejoining starts a fresh transfer. Ordinary TCP
-packet loss is handled by TCP retransmission. Snapshots are limited to 32 MiB;
-transfer/ingestion waits expire after 30 seconds without completion.
+---
 
-This work covers lobby joining and the host's existing world. It preserves the
-engine's restrictions on joining a match already in progress. The 12-stage
-automated suite covers transport, snapshot verification, concurrent and
-cross-process transfers, load-result barriers, and native hook execution. Its
-loader fixtures do **not** establish successful native world deserialization.
-Separate VM checks verified saved-world ingestion, reclaiming a disconnected
-player's country while protecting the host's occupied country, resuming France
-against an England host and advancing the saved match from 1504 to 1506, and a
-generated-world lobby, two-player launch, and advancement from 1502 to 1504.
-Scenario, native three-player, longer-run state comparison, and extended saved-world
-checks remain pending. See [MULTIPLAYER_TODO.md](MULTIPLAYER_TODO.md).
-
-The test VMs' desktop `run.bat` files use [tools/run-vm-game.bat](tools/run-vm-game.bat).
-Each launch copies and verifies the EXE, DLL, and configuration from
-`\\VBOXSVR\Imperialism2_Patch\obj\vm-deploy` into `C:\Games\Imperialism2`.
-`build.ps1` refreshes this bundle automatically and enables diagnostic logging
-in its test configuration. Close the game before rerunning the launcher; it
-refuses to update a running copy and stops if any copy or verification fails.
-The first replaced game files and original desktop launchers are retained with
-a `.before-worldsync.bak` suffix. `run.bat /deploy-only` verifies deployment
-without starting the game.
-
-### 2. `_winCdPlay` CD Audio Assertion Popup (`D:\Epsilon\win_cd.cpp @407`)
+### 3. `_winCdPlay` CD Audio Assertion Popup (`D:\Epsilon\win_cd.cpp @407`)
 On modern Windows systems, *Imperialism II* (v1.03) can intermittently trigger a blocking debug assertion popup when changing music tracks:
 
 ```text
@@ -167,7 +122,7 @@ C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe /nologo /platform:x86 /out
 | :--- | :--- | :--- |
 | **Original `Imperialism II.exe` (v1.03 GOG)** | `4,024,320` B | `63346490C488D2A4EF528E3C0884D823E60AC59F602FA82657B39AA040253279` |
 | **Patched `ImpII.exe`** | `4,024,320` B | `998384BB696F02D37A6725CEA33F98BC2CA711B803C2638BED07A91D687CA7CC` |
-| **`dplayx.dll`** | `89,600` B | `C589356D3D07F8ABA7090C1B9D4433A8C44400E6461B85BCD5FCA7D295CED6A1` |
+| **`dplayx.dll`** | `88,576` B | `F90437BE195EF047BAB51D18A2E76A454E2CDD575729F83237C3B80124C629BF` |
 
 ### `Imperialism II.exe` Offsets Modified (`src/PatchExe.ps1`)
 

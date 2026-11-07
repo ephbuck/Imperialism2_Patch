@@ -82,17 +82,4 @@ if (Test-Path -LiteralPath $gameDir) {
     Write-Host "Deployed patched Imperialism II.exe, dplayx.dll, and dplayx.ini to: $gameDir"
 }
 
-# Keep the desktop launchers in the test VMs on the same build. Diagnostic logging
-# is enabled only in this test bundle; preserve the user's normal configuration.
-$vmDeployDir = Join-Path $objDir "vm-deploy"
-New-Item -ItemType Directory -Force -Path $vmDeployDir | Out-Null
-$vmSourceExe = Join-Path $repoRoot "ImpII.exe"
-if (Test-Path -LiteralPath $vmSourceExe) {
-    Copy-Item -LiteralPath $vmSourceExe -Destination (Join-Path $vmDeployDir "Imperialism II.exe") -Force
-    Copy-Item -LiteralPath $builtDplayx -Destination (Join-Path $vmDeployDir "dplayx.dll") -Force
-    $vmIniContent = [System.IO.File]::ReadAllText($rootIni) -replace '(?m)^Log=0\r?$', 'Log=1'
-    [System.IO.File]::WriteAllText((Join-Path $vmDeployDir "dplayx.ini"), $vmIniContent, [System.Text.Encoding]::ASCII)
-    Write-Host "Prepared VM launch bundle: $vmDeployDir"
-}
-
 Write-Host "=== Build Complete ==="

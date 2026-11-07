@@ -183,7 +183,6 @@ namespace Imp2Net
             // The reader continues processing acknowledgments while this peer's writer waits.
             // No session lock or game thread is held. Other peers have independent writers.
             if (!WaitLoaded()) throw new IOException("Client did not load the world snapshot.");
-            DPlayConfig.Log("WorldSync: client {0} loaded transfer {1}", To, TransferId);
         }
 
         public void Dispose()
@@ -443,7 +442,6 @@ namespace Imp2Net
                     {
                         m_incomingWorld.Commit(payload);
                         SendFrame(host, WorldProtocol.Ack, WorldProtocol.AckFrame(m_incomingWorld.TransferId, WorldProtocol.Stored));
-                        DPlayConfig.Log("WorldSync: committed {0} for player {1}", m_incomingWorld.TransferId, m_incomingWorld.To);
                     }
                 }
             }
@@ -495,7 +493,6 @@ namespace Imp2Net
                 if (success)
                     foreach (byte[] message in m_loadMessages) SendFrame(m_hostConn, DPlayConstants.PKT_TCP_DATA_MSG, message);
                 m_loadMessages.Clear(); m_loadMessagesBytes = 0;
-                DPlayConfig.Log("WorldSync: native ingestion of {0}: {1}", m_incomingWorld.TransferId, success);
             }
         }
 
@@ -539,7 +536,6 @@ namespace Imp2Net
                     m_loadMessages.Clear(); m_loadMessagesBytes = 0;
                 }
             }
-            DPlayConfig.Log("WorldSync: resumed saved country {0}: {1}", country, success);
             return true;
         }
 
@@ -956,7 +952,6 @@ namespace Imp2Net
                 return true;
             }
             s_loadedIntoLobby = loaded;
-            DPlayConfig.Log("WorldSync: restored lounge after load, phase={0}, country={1}", phase, country);
             return loaded;
         }
         public static int Load(int saveId, IntPtr prefix)
@@ -971,7 +966,6 @@ namespace Imp2Net
                 {
                     if (prefix == IntPtr.Zero) return 1;
                     VerifyGame();
-                    DPlayConfig.Log("WorldSync: host uses native saved-world loader for {0}", saveId);
                     return ((OriginalWorldLoader)Marshal.GetDelegateForFunctionPointer(
                         new IntPtr(0x5C19C0), typeof(OriginalWorldLoader)))(saveId, prefix);
                 }
