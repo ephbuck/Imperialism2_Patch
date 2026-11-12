@@ -548,26 +548,13 @@ internal static class TestGraphicsBridge
             "Edge tile blit clamped to DstX=480 with width 194, completely protecting left pillarbox");
     }
 
-    private static void TestSpriteTransparencyAndScreenReadHooks()
+    private static void TestTerrainCacheAndScreenReadHooks()
     {
-        Console.WriteLine("\n--- 10. Sprite Sheet Transparency & Offscreen Screen Read Verification ---");
+        Console.WriteLine("\n--- 10. Terrain Cache & Offscreen Screen Read Verification ---");
 
-        // 1. Sprite sheet detection logic:
-        // isSpriteSheet = (srcCanvasW > 800 && srcCanvasH <= 128 && srcW <= 128 && srcH <= 128);
-        bool testUnitStrip = (7040 > 800 && 64 <= 128 && 64 <= 128 && 64 <= 128);
-        Assert(testUnitStrip, "7040x64 animation strip with 64x64 frame correctly identified as unit sprite sheet");
-
-        bool testSavedTile = (64 > 800 && 64 <= 128 && 64 <= 128 && 64 <= 128);
-        Assert(!testSavedTile, "64x64 terrain tile correctly identified as non-sprite-sheet (uses standard StretchBlt)");
-
-        bool testUiFull = (800 > 800 && 600 <= 128 && 800 <= 128 && 600 <= 128);
-        Assert(!testUiFull, "800x600 UI canvas correctly identified as non-sprite-sheet");
-
-        bool testMapBuffer = (864 > 800 && 728 <= 128 && 64 <= 128 && 64 <= 128);
-        Assert(!testMapBuffer, "864x728 offscreen map buffer correctly identified as non-sprite-sheet");
-
-        bool testSmallUi = (800 > 800 && 600 <= 128 && 35 <= 128 && 37 <= 128);
-        Assert(!testSmallUi, "800x600 partial UI element correctly identified as non-sprite-sheet");
+        byte[] exe = File.ReadAllBytes(@"ImpII.exe");
+        Assert(BitConverter.ToInt32(exe, 0x158D32) == 7040,
+            "Native map constructor allocates a 7040-wide terrain cache (110 slots of 64px), not a transparent sprite sheet");
 
         // 2. Unit blit destination math: Explorer at virtual (362, 314, 64x64)
         int dstX = 480;
@@ -590,9 +577,7 @@ internal static class TestGraphicsBridge
         Assert(readSrcX == 1783 && readSrcY == 1130 && readSrcW == 230 && readSrcH == 230,
             "Screen read at virtual (362, 314, 64x64) maps to physical terrain (1783, 1130) avoiding left pillarbox at X=362");
 
-        // 4. Color-key transparency value: Default black COLORREF is 0x00000000
-        uint crDefault = 0x00000000;
-        Assert(crDefault == 0x00000000, "Default transparent color key is COLORREF RGB(0,0,0) (0x00000000)");
+        // Real opaque blit / clipping / ROP behavior is exercised by TestMapAnimation.
     }
 
     private static void TestInteractiveWorldMapZoom()
@@ -960,7 +945,7 @@ internal static class TestGraphicsBridge
         TestInvalidateRectAndClipping();
         TestAmbitMcWindowScaling();
         TestGdiVectorAndScrollWindowHooks();
-        TestSpriteTransparencyAndScreenReadHooks();
+        TestTerrainCacheAndScreenReadHooks();
         TestInteractiveWorldMapZoom();
         TestOptionBArchitecture();
 

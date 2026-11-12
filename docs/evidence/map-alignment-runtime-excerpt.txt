@@ -1,0 +1,28 @@
+Prior live session: Start Daerfentol, 3840x2160 Fit, 0.75x. Historical observations; not REA capture.
+[12:49:02.686] [GraphicsBridge] Animation: zoom=0.75 frameBefore=3 ticks=2798 mapTicks=567 frameChanges=88 invalidations=9 directBlits=0 selectionPatches=0
+[12:49:03.710] [GraphicsBridge] Animation: zoom=0.75 frameBefore=4 ticks=2862 mapTicks=631 frameChanges=100 invalidations=21 directBlits=0 selectionPatches=0
+[12:49:04.702] [GraphicsBridge] Animation: zoom=0.75 frameBefore=3 ticks=2924 mapTicks=693 frameChanges=110 invalidations=31 directBlits=0 selectionPatches=0
+[12:49:05.726] [GraphicsBridge] Animation: zoom=0.75 frameBefore=3 ticks=2988 mapTicks=757 frameChanges=121 invalidations=42 directBlits=0 selectionPatches=0
+[12:49:06.718] [GraphicsBridge] Animation: zoom=0.75 frameBefore=0 ticks=3050 mapTicks=819 frameChanges=130 invalidations=51 directBlits=0 selectionPatches=0
+[12:49:07.743] [GraphicsBridge] Animation: zoom=0.75 frameBefore=3 ticks=3114 mapTicks=883 frameChanges=141 invalidations=62 directBlits=0 selectionPatches=0
+[12:49:08.734] [GraphicsBridge] Animation: zoom=0.75 frameBefore=3 ticks=3176 mapTicks=945 frameChanges=150 invalidations=71 directBlits=0 selectionPatches=0
+[12:49:09.758] [GraphicsBridge] Animation: zoom=0.75 frameBefore=0 ticks=3240 mapTicks=1009 frameChanges=161 invalidations=82 directBlits=0 selectionPatches=0
+[12:49:10.750] [GraphicsBridge] Animation: zoom=0.75 frameBefore=3 ticks=3302 mapTicks=1071 frameChanges=171 invalidations=92 directBlits=0 selectionPatches=0
+[12:49:11.773] [GraphicsBridge] Animation: zoom=0.75 frameBefore=3 ticks=3366 mapTicks=1135 frameChanges=180 invalidations=101 directBlits=0 selectionPatches=0
+[12:52:17.216] [GraphicsBridge] Map input: point=(353,253) origin=(74,122) scale=(1.33333333333333,1.333984375) camera=(4800,1472) stack=
+[12:52:17.224] [GraphicsBridge] Map raw blit: dst=(273,345) size=50x50 canvas=800x600 tick=False draw=False stack=
+[12:52:17.312] [GraphicsBridge] Map raw blit: dst=(345,296) size=50x51 canvas=800x600 tick=False draw=False stack=
+[12:52:17.440] [GraphicsBridge] Map raw blit: dst=(273,345) size=50x50 canvas=800x600 tick=False draw=False stack=
+[12:52:17.469] [GraphicsBridge] Map raw blit: dst=(345,296) size=50x51 canvas=800x600 tick=False draw=False stack=
+[12:52:17.625] [GraphicsBridge] Map raw blit: dst=(362,314) size=64x64 canvas=64x64 tick=False draw=False stack=
+[12:52:17.633] [GraphicsBridge] Map raw blit: dst=(345,296) size=50x51 canvas=800x600 tick=False draw=False stack=
+[12:52:17.662] [GraphicsBridge] Map raw blit: dst=(273,345) size=50x50 canvas=800x600 tick=False draw=False stack=
+[12:52:17.790] [GraphicsBridge] Map raw blit: dst=(345,296) size=50x51 canvas=800x600 tick=False draw=False stack=
+[12:52:17.886] [GraphicsBridge] Map raw blit: dst=(273,345) size=50x50 canvas=800x600 tick=False draw=False stack=
+[12:52:17.955] [GraphicsBridge] Map raw blit: dst=(345,296) size=50x51 canvas=800x600 tick=False draw=False stack=
+[12:52:18.104] [GraphicsBridge] Map raw blit: dst=(362,314) size=64x64 canvas=7040x64 tick=False draw=False stack=
+[12:52:18.114] [GraphicsBridge] Map raw blit: dst=(273,296) size=122x99 canvas=800x600 tick=False draw=False stack=
+[12:52:18.271] [GraphicsBridge] Map raw blit: dst=(345,296) size=50x51 canvas=800x600 tick=False draw=False stack=
+[12:52:18.334] [GraphicsBridge] Map raw blit: dst=(273,345) size=50x50 canvas=800x600 tick=False draw=False stack=
+[12:52:18.430] [GraphicsBridge] Map raw blit: dst=(345,296) size=50x51 canvas=800x600 tick=False draw=False stack=
+[12:52:18.559] [GraphicsBridge] Map raw blit: dst=(273,345) size=50x50 canvas=800x600 tick=False draw=False stack=

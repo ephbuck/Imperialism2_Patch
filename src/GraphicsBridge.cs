@@ -165,6 +165,15 @@ namespace Imp2Net
         private const int ADDR_DRAWSTRING_IMPL           = 0x004A8700; // DrawString core engine implementation
         private const int CODE_UPDATETHEGWORLD_RECT      = 0x00532EAC; // MakeNewGWorld bounds setup
 
+        // Retail 1.03 addresses, verified from RTTI and the thunk targets in ImpII.exe.
+        // The bundled 1999 .map describes a different link: do not copy its VAs here.
+        private static readonly int[] s_animationVtables = {
+            0x006F6D90, 0x006F6DE8, 0x006F6E30, // TAnimation, TCivAnimation, TOneTimeAnimation
+            0x006F6E78, 0x006F6EC8, 0x006F6F20  // TFocusAnimation, TTransFocusAnimation, TScriptedAnimation
+        };
+        private const int CALL_MAP_UPDATE_ANIMATION_LOCS = 0x0055AB36;
+        private const int ADDR_UPDATE_ANIMATION_LOCS = 0x0040104B;
+
         [DllImport("ole32.dll", SetLastError = true)]
         private static extern int CoInitialize(IntPtr pvReserved);
 
@@ -413,16 +422,23 @@ namespace Imp2Net
         [DllImport("gdi32.dll", SetLastError = true)]
         private static extern IntPtr GetCurrentObject(IntPtr hdc, int uObjectType);
 
+        [DllImport("gdi32.dll")]
+        private static extern bool GdiFlush();
+
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr GetCurrentProcess();
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool FlushInstructionCache(IntPtr process, IntPtr address, UIntPtr size);
+
+        [DllImport("gdi32.dll")]
+        private static extern int SaveDC(IntPtr hdc);
+
+        [DllImport("gdi32.dll")]
+        private static extern bool RestoreDC(IntPtr hdc, int savedDC);
+
         [DllImport("gdi32.dll", SetLastError = true)]
         private static extern int GetObject(IntPtr hgdiobj, int cbBuffer, out BITMAP lpvObject);
-
-        [DllImport("gdi32.dll", SetLastError = true)]
-        private static extern uint GetPixel(IntPtr hdc, int nXPos, int nYPos);
-
-        [DllImport("msimg32.dll", SetLastError = true)]
-        private static extern bool TransparentBlt(
-            IntPtr hdcDest, int xDest, int yDest, int wDest, int hDest,
-            IntPtr hdcSrc, int xSrc, int ySrc, int wSrc, int hSrc, uint crTransparent);
 
         [DllImport("gdi32.dll", SetLastError = true)]
         private static extern int StretchDIBits(
@@ -517,6 +533,12 @@ namespace Imp2Net
 
         [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
         public delegate void MapDialogDrawDelegate(IntPtr thisPtr, IntPtr pRect);
+
+        [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+        private delegate void AnimationTickDelegate(IntPtr thisPtr);
+
+        [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+        private delegate void AnimationLocationsDelegate(IntPtr thisPtr, int deltaX, int deltaY, RECT bounds);
 
         [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
         public delegate int MapDialogConvertPointDelegate(IntPtr thisPtr, IntPtr pPt);
@@ -669,6 +691,30 @@ namespace Imp2Net
         private static MapDrawStringDelegate s_myMapDrawString = OnMapDrawString;
         private static MapDrawStringDelegate s_origDrawString = null;
         private static bool s_isInsideMapDraw = false;
+        [ThreadStatic] private static bool s_insideMapAnimation;
+        private static readonly Dictionary<IntPtr, AnimationTickDelegate> s_originalAnimationTicks = new Dictionary<IntPtr, AnimationTickDelegate>();
+        private static readonly AnimationTickDelegate s_myAnimationTick = MyAnimationTickHook;
+        private static readonly AnimationLocationsDelegate s_myAnimationLocations = MyAnimationLocationsHook;
+        private static AnimationLocationsDelegate s_originalAnimationLocations;
+        private static bool s_animationLog;
+        private static int s_animationLogTime = Environment.TickCount;
+        private static int s_animationBindingLogs;
+        private static long s_animationTicks, s_mapAnimationTicks, s_animationFrameChanges;
+        private static long s_animationInvalidations, s_animationBlits, s_selectionPatches;
+
+        private static bool IsZoomedMapAnimation { get { return s_insideMapAnimation && !s_isInsideMapDraw && s_zoomEnabled && s_zoomLevel < 1.0f; } }
+
+        private static void MyAnimationLocationsHook(IntPtr animator, int deltaX, int deltaY, RECT bounds)
+        {
+            // Native panning retires animations outside (-64,-64)-(640,576).
+            // Keep animations in the expanded visible area alive after camera movement.
+            if (s_zoomEnabled && s_zoomLevel < 1.0f)
+            {
+                bounds.Right = (int)Math.Ceiling(576.0 / s_zoomLevel) + 64;
+                bounds.Bottom = (int)Math.Ceiling(512.0 / s_zoomLevel) + 64;
+            }
+            s_originalAnimationLocations(animator, deltaX, deltaY, bounds);
+        }
 
         // Presentation coordinates
         public static int WindowW { get; private set; }
@@ -774,6 +820,7 @@ namespace Imp2Net
         {
             float oldZoom = s_zoomLevel;
             s_zoomLevel = (float)Math.Round(Math.Max(0.25f, Math.Min(3.0f, zoom)), 2);
+            if (s_zoomLevel != oldZoom) s_animationBindingLogs = 0;
             if (s_zoomLevel < 1.0f && s_zoomLevel != oldZoom)
             {
                 s_needCacheFlush = true;
@@ -1166,6 +1213,10 @@ namespace Imp2Net
                     else if (key.Equals("Zoom", StringComparison.OrdinalIgnoreCase) || key.Equals("ZoomEnabled", StringComparison.OrdinalIgnoreCase))
                     {
                         s_zoomEnabled = (val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase));
+                    }
+                    else if (key.Equals("AnimationLog", StringComparison.OrdinalIgnoreCase))
+                    {
+                        s_animationLog = (val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase));
                     }
                 }
             }
@@ -1706,6 +1757,109 @@ namespace Imp2Net
         }
 
         private static int s_scaledBlitCount = 0;
+        private static int s_mapBlitTraceCount, s_mapInputTraceCount;
+
+        // Global canvas coordinates -> zoomed canvas coordinates. Keep the exact
+        // expanded extent used by Draw (ceil matters at 0.75x), not just zoom * x.
+        public static RECT MapAnimationRectangle(RECT rc)
+        {
+            double sx = 576.0 / Math.Ceiling(576.0 / s_zoomLevel);
+            double sy = 512.0 / Math.Ceiling(512.0 / s_zoomLevel);
+            return new RECT {
+                Left = 10 + (int)Math.Floor((rc.Left - 10) * sx),
+                Top = 58 + (int)Math.Floor((rc.Top - 58) * sy),
+                Right = 10 + (int)Math.Ceiling((rc.Right - 10) * sx),
+                Bottom = 58 + (int)Math.Ceiling((rc.Bottom - 58) * sy)
+            };
+        }
+
+        private static RECT AnimationPhysicalRectangle(RECT rc)
+        {
+            rc = MapAnimationRectangle(rc);
+            return new RECT {
+                Left = DstX + (int)Math.Floor(rc.Left * TargetW / 800.0),
+                Top = DstY + (int)Math.Floor(rc.Top * TargetH / 600.0),
+                Right = DstX + (int)Math.Ceiling(rc.Right * TargetW / 800.0),
+                Bottom = DstY + (int)Math.Ceiling(rc.Bottom * TargetH / 600.0)
+            };
+        }
+
+        public static string GetAnimationDiagnostics()
+        {
+            return string.Format("ticks={0} mapTicks={1} frameChanges={2} invalidations={3} directBlits={4} selectionPatches={5}",
+                s_animationTicks, s_mapAnimationTicks, s_animationFrameChanges,
+                s_animationInvalidations, s_animationBlits, s_selectionPatches);
+        }
+
+        private static void MyAnimationTickHook(IntPtr thisPtr)
+        {
+            AnimationTickDelegate original;
+            IntPtr vtable = Marshal.ReadIntPtr(thisPtr);
+            if (!s_originalAnimationTicks.TryGetValue(vtable, out original)) return;
+            bool previous = s_insideMapAnimation;
+            bool isMap = s_pActiveMapDialog != IntPtr.Zero && Marshal.ReadIntPtr(thisPtr, 4) == s_pActiveMapDialog;
+            short frame = Marshal.ReadInt16(thisPtr, 8);
+            s_animationTicks++;
+            if (isMap) s_mapAnimationTicks++;
+            if (s_animationLog && s_zoomLevel < 1.0f && s_animationBindingLogs++ < 8)
+                Log("Animation binding: vtable=0x{0:X8} view=0x{1:X8} map=0x{2:X8}",
+                    vtable.ToInt32(), Marshal.ReadIntPtr(thisPtr, 4).ToInt32(), s_pActiveMapDialog.ToInt32());
+            s_insideMapAnimation = isMap;
+            try { original(thisPtr); }
+            finally { s_insideMapAnimation = previous; }
+            int vt = vtable.ToInt32();
+            if (isMap && (vt == 0x006F6D90 || vt == 0x006F6DE8 || vt == 0x006F6E78 || vt == 0x006F6EC8)
+                && frame != Marshal.ReadInt16(thisPtr, 8)) s_animationFrameChanges++;
+            // One-time/scripted ticks may retire themselves; only the verified
+            // non-owning Tick implementations above are safe to inspect afterward.
+            if (s_animationLog)
+            {
+                // The before-frame is safe even for self-deleting one-time animations.
+                if (unchecked(Environment.TickCount - s_animationLogTime) >= 1000)
+                {
+                    s_animationLogTime = Environment.TickCount;
+                    Log("Animation: zoom={0} frameBefore={1} {2}", s_zoomLevel, frame, GetAnimationDiagnostics());
+                }
+            }
+        }
+
+        private static bool PresentMapAnimation(IntPtr hdcDest, int x, int y, int w, int h,
+            IntPtr hdcSrc, int sx, int sy, uint rop)
+        {
+            if (w <= 0 || h <= 0) return true;
+            RECT canvas = MapAnimationRectangle(new RECT { Left = x, Top = y, Right = x + w, Bottom = y + h });
+            RECT physical = AnimationPhysicalRectangle(new RECT { Left = x, Top = y, Right = x + w, Bottom = y + h });
+            int saved = SaveDC(hdcDest);
+            if (saved == 0) return false;
+            try
+            {
+                // Clip rather than shrink the destination: shrinking also shifts/rescales the source at map edges.
+                IntersectClipRect(hdcDest,
+                    DstX + (int)Math.Floor(10 * TargetW / 800.0), DstY + (int)Math.Floor(58 * TargetH / 600.0),
+                    DstX + (int)Math.Ceiling(586 * TargetW / 800.0), DstY + (int)Math.Ceiling(570 * TargetH / 600.0));
+                SetStretchBltMode(hdcDest, COLORONCOLOR);
+                bool result = StretchBlt(hdcDest, physical.Left, physical.Top, physical.Right - physical.Left,
+                    physical.Bottom - physical.Top, hdcSrc, sx, sy, w, h, rop);
+                if (s_cachedCanvasDC != IntPtr.Zero)
+                {
+                    int cachedSave = SaveDC(s_cachedCanvasDC);
+                    if (cachedSave != 0)
+                    {
+                        try
+                        {
+                            IntersectClipRect(s_cachedCanvasDC, 10, 58, 586, 570);
+                            SetStretchBltMode(s_cachedCanvasDC, COLORONCOLOR);
+                            StretchBlt(s_cachedCanvasDC, canvas.Left, canvas.Top, canvas.Right - canvas.Left,
+                                canvas.Bottom - canvas.Top, hdcSrc, sx, sy, w, h, rop);
+                        }
+                        finally { RestoreDC(s_cachedCanvasDC, cachedSave); }
+                    }
+                }
+                s_animationBlits++;
+                return result;
+            }
+            finally { RestoreDC(hdcDest, saved); }
+        }
 
         private static bool MyBitBltHook(IntPtr hdcDest, int nXDest, int nYDest, int nWidth, int nHeight, IntPtr hdcSrc, int nXSrc, int nYSrc, uint dwRop)
         {
@@ -1741,6 +1895,9 @@ namespace Imp2Net
                 {
                     EnsurePresentationConfigured();
 
+                    if (IsZoomedMapAnimation && TargetW > 0 && TargetH > 0 && nWidth <= 128 && nHeight <= 128)
+                        return PresentMapAnimation(hdcDest, nXDest, nYDest, nWidth, nHeight, hdcSrc, nXSrc, nYSrc, dwRop);
+
                 if (TargetW > 0 && TargetH > 0)
                 {
                     int srcCanvasW = 800;
@@ -1761,6 +1918,9 @@ namespace Imp2Net
                     int srcY = nYSrc;
                     int srcW = nWidth;
                     int srcH = nHeight;
+                    if (s_animationLog && s_zoomLevel < 1.0f && nWidth <= 128 && nHeight <= 128 && s_mapBlitTraceCount++ < 16)
+                        Log("Map raw blit: dst=({0},{1}) size={2}x{3} canvas={4}x{5} tick={6} draw={7}",
+                            nXDest, nYDest, nWidth, nHeight, srcCanvasW, srcCanvasH, s_insideMapAnimation, s_isInsideMapDraw);
 
                     int dstX;
                     int dstY;
@@ -1865,32 +2025,9 @@ namespace Imp2Net
                         FillRect(hdcDest, ref rightPillar, blackBrush);
                     }
 
-                    // Detect unit sprite sheets (e.g. 7040x64 animation strip) blitted directly to the presentation window.
-                    // Transparent pixels (background) in the sprite frame must NOT overwrite the terrain with solid black.
-                    bool isSpriteSheet = (srcCanvasW > 800 && srcCanvasH <= 128 && srcW <= 128 && srcH <= 128);
-                    if (isSpriteSheet)
-                    {
-                        uint crTransparent = 0x00000000; // default black (0x00BBGGRR)
-                        uint corner = GetPixel(hdcSrc, srcX, srcY);
-                        if (corner != 0xFFFFFFFF)
-                        {
-                            crTransparent = corner;
-                        }
-
-                        // Nearest-neighbor sampling avoids fringing/blending with transparent color
-                        SetStretchBltMode(hdcDest, 3); // COLORONCOLOR
-                        SetBrushOrgEx(hdcDest, 0, 0, IntPtr.Zero);
-                        bool transRes = TransparentBlt(hdcDest, dstX, dstY, dstW, dstH, hdcSrc, srcX, srcY, srcW, srcH, crTransparent);
-                        SetStretchBltMode(hdcDest, s_filter);
-
-                        if (transRes)
-                        {
-                            Log("Sprite TransparentBlt #{0}: crTransparent=0x{1:X6}, src=({2},{3},{4}x{5}) -> dst=({6},{7},{8}x{9})",
-                                s_scaledBlitCount, crTransparent, srcX, srcY, srcW, srcH, dstX, dstY, dstW, dstH);
-                            return true;
-                        }
-                        Log("Sprite TransparentBlt FAILED! err={0}, falling back to StretchBlt", Marshal.GetLastWin32Error());
-                    }
+                    // 7040x64 is TMapDialog's 110-slot terrain cache (110 * 64),
+                    // not a transparent animation strip. Preserve native raster operations;
+                    // choosing GetPixel(srcX,srcY) as a color key punches holes in terrain.
 
                     int bltFilter = (s_zoomLevel < 1.0f && s_zoomFilter == ZoomFilter.Nearest) ? COLORONCOLOR : s_filter;
                     SetStretchBltMode(hdcDest, bltFilter);
@@ -1934,6 +2071,14 @@ namespace Imp2Net
                 EnsurePresentationConfigured();
                 if (TargetW > 0 && TargetH > 0)
                 {
+                    if (IsZoomedMapAnimation && nWidth <= 128 && nHeight <= 128)
+                    {
+                        RECT read = AnimationPhysicalRectangle(new RECT { Left = nXSrc, Top = nYSrc,
+                            Right = nXSrc + nWidth, Bottom = nYSrc + nHeight });
+                        SetStretchBltMode(hdcDest, COLORONCOLOR);
+                        return StretchBlt(hdcDest, nXDest, nYDest, nWidth, nHeight, hdcSrc,
+                            read.Left, read.Top, read.Right - read.Left, read.Bottom - read.Top, dwRop);
+                    }
                     int readSrcX = DstX + (int)Math.Round((double)nXSrc * TargetW / 800.0);
                     int readSrcY = DstY + (int)Math.Round((double)nYSrc * TargetH / 600.0);
                     int readSrcW = (int)Math.Round((double)nWidth * TargetW / 800.0);
@@ -2053,7 +2198,12 @@ namespace Imp2Net
         {
             if (s_origMapDrawSelection != null)
             {
-                s_origMapDrawSelection(thisPtr);
+                // Selection also draws/restores the focus animation synchronously,
+                // outside Tick. Those screen blits need the same map transform.
+                bool previous = s_insideMapAnimation;
+                s_insideMapAnimation = true;
+                try { s_origMapDrawSelection(thisPtr); }
+                finally { s_insideMapAnimation = previous; }
             }
         }
 
@@ -2075,6 +2225,27 @@ namespace Imp2Net
         {
             if (s_origMapScreenToTile != null)
             {
+                if (s_zoomEnabled && s_zoomLevel < 1.0f && !s_isInsideMapDraw && pPt != IntPtr.Zero)
+                {
+                    // Native pane routing has already subtracted the map's (10,58)
+                    // canvas origin. Expand this map-local point exactly once here.
+                    POINT pt = (POINT)Marshal.PtrToStructure(pPt, typeof(POINT));
+                    if (s_animationLog && s_mapInputTraceCount++ < 16)
+                        Log("Map input: local=({0},{1}) origin=({2},{3}) scale=({4},{5})",
+                            pt.X, pt.Y, s_lastSx0, s_lastSy0, s_lastScaleX, s_lastScaleY);
+                    if (pt.X >= 0 && pt.X < 576 && pt.Y >= 0 && pt.Y < 512)
+                    {
+                        MapScreenToTileCoordinates(pt.X, pt.Y, out pt.X, out pt.Y);
+                        IntPtr mapped = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(POINT)));
+                        try
+                        {
+                            Marshal.StructureToPtr(pt, mapped, false);
+                            s_origMapScreenToTile(thisPtr, mapped, pOutCol, pOutRow, pOutValid);
+                        }
+                        finally { Marshal.FreeHGlobal(mapped); }
+                        return;
+                    }
+                }
                 s_origMapScreenToTile(thisPtr, pPt, pOutCol, pOutRow, pOutValid);
             }
         }
@@ -2121,12 +2292,14 @@ namespace Imp2Net
             if (zoomW > 2380) zoomW = 2380;
             if (zoomH > 2180) zoomH = 2180;
 
+            // Draw receives a map-local rectangle. Native Draw adds the 64px
+            // tactical-buffer margin itself; (10,58) belongs only to presentation.
             VRect expRect = new VRect
             {
-                Left = 10,
-                Top = 58,
-                Right = 10 + zoomW,
-                Bottom = 58 + zoomH
+                Left = 0,
+                Top = 0,
+                Right = zoomW,
+                Bottom = zoomH
             };
 
             Marshal.StructureToPtr(expRect, s_pExpandedRectBuf, false);
@@ -2231,31 +2404,15 @@ namespace Imp2Net
 
             try
             {
-                // Read source rect from tactical buffer (QuickDraw Rect order: top, left, bottom, right)
-                int r0 = Marshal.ReadInt32(pSrcRect, 0);
-                int r1 = Marshal.ReadInt32(pSrcRect, 4);
-                int r2 = Marshal.ReadInt32(pSrcRect, 8);
-                int r3 = Marshal.ReadInt32(pSrcRect, 12);
-
-                int top = Math.Min(r0, r2);
-                int bottom = Math.Max(r0, r2);
-                int left = Math.Min(r1, r3);
-                int right = Math.Max(r1, r3);
-
-                int srcW = right - left;
-                int srcH = bottom - top;
-
-                if (srcW > 0 && srcH > 0 && s_lastScaleX > 0 && s_lastScaleY > 0)
+                // This Windows QuickDraw port takes tagRECT: left, top, right, bottom.
+                // Both CopyBits (0x004AAA40) and full-map downsampling use that order.
+                RECT source = (RECT)Marshal.PtrToStructure(pSrcRect, typeof(RECT));
+                RECT canvas;
+                if (TryMapBufferPatch(source, out canvas))
                 {
-                    int canvasX = 10 + (int)Math.Round((left - s_lastSx0) / s_lastScaleX);
-                    int canvasY = 58 + (int)Math.Round((top - s_lastSy0) / s_lastScaleY);
-                    int canvasW = Math.Max(1, (int)Math.Round((double)srcW / s_lastScaleX));
-                    int canvasH = Math.Max(1, (int)Math.Round((double)srcH / s_lastScaleY));
-
-                    if (canvasX >= 10 && (canvasX + canvasW) <= 586 && canvasY >= 58 && (canvasY + canvasH) <= 570)
-                    {
-                        DownsamplePatch(srcPixMap, dstPixMap, left, top, srcW, srcH, canvasX, canvasY, canvasW, canvasH);
-                    }
+                    DownsamplePatch(srcPixMap, dstPixMap, canvas.Left, canvas.Top,
+                        canvas.Right - canvas.Left, canvas.Bottom - canvas.Top);
+                    s_selectionPatches++;
                 }
             }
             catch (Exception ex)
@@ -2267,9 +2424,20 @@ namespace Imp2Net
             // Calling it would stamp the unscaled 64x64 tile into Ross Channel (the ocean)!
         }
 
+        public static bool TryMapBufferPatch(RECT source, out RECT canvas)
+        {
+            canvas = new RECT();
+            if (source.Right <= source.Left || source.Bottom <= source.Top || s_lastScaleX <= 0 || s_lastScaleY <= 0) return false;
+            // Outward rounding includes every filter footprint touching the dirty source.
+            canvas.Left = Math.Max(10, 10 + (int)Math.Floor((source.Left - s_lastSx0) / s_lastScaleX));
+            canvas.Top = Math.Max(58, 58 + (int)Math.Floor((source.Top - s_lastSy0) / s_lastScaleY));
+            canvas.Right = Math.Min(586, 10 + (int)Math.Ceiling((source.Right - s_lastSx0) / s_lastScaleX));
+            canvas.Bottom = Math.Min(570, 58 + (int)Math.Ceiling((source.Bottom - s_lastSy0) / s_lastScaleY));
+            return canvas.Right > canvas.Left && canvas.Bottom > canvas.Top;
+        }
+
         private static unsafe void DownsamplePatch(
             IntPtr srcPixMap, IntPtr dstPixMap,
-            int srcLeft, int srcTop, int srcW, int srcH,
             int canvasX, int canvasY, int canvasW, int canvasH)
         {
             try
@@ -2284,47 +2452,22 @@ namespace Imp2Net
                 IntPtr pDstBmi = Marshal.ReadIntPtr(pDstDib, 0x10);
                 if (pSrcBits == IntPtr.Zero || pDstBits == IntPtr.Zero || pSrcBmi == IntPtr.Zero || pDstBmi == IntPtr.Zero) return;
 
-                int srcBufW = Marshal.ReadInt32(pSrcBmi, 4);
-                int srcBufH = Marshal.ReadInt32(pSrcBmi, 8);
-                int dstBufW = Marshal.ReadInt32(pDstBmi, 4);
                 int dstBufH = Marshal.ReadInt32(pDstBmi, 8);
-
-                int srcStride = ((srcBufW * 2 + 3) / 4) * 4;
-                int dstStride = ((dstBufW * 2 + 3) / 4) * 4;
-
-                bool srcBottomUp = srcBufH > 0;
                 bool dstBottomUp = dstBufH > 0;
-                int absSrcH = Math.Abs(srcBufH);
                 int absDstH = Math.Abs(dstBufH);
-
-                byte* pSrcBase = (byte*)pSrcBits.ToPointer();
-                byte* pDstBase = (byte*)pDstBits.ToPointer();
-
-                for (int dy = 0; dy < canvasH; dy++)
+                // Reuse the full-map sampling grid and filter. Resizing each 64x64
+                // patch independently causes seams and jumps at fractional zoom.
+                IntPtr rects = Marshal.AllocHGlobal(32);
+                try
                 {
-                    int targetY = canvasY + dy;
-                    if (targetY < 0 || targetY >= absDstH) continue;
-
-                    int sourceY = srcTop + (int)((double)dy * srcH / canvasH);
-                    if (sourceY < 0 || sourceY >= absSrcH) continue;
-
-                    int srcScanY = srcBottomUp ? (absSrcH - 1 - sourceY) : sourceY;
-                    int dstScanY = dstBottomUp ? (absDstH - 1 - targetY) : targetY;
-
-                    ushort* pSrcLine = (ushort*)(pSrcBase + srcScanY * srcStride);
-                    ushort* pDstLine = (ushort*)(pDstBase + dstScanY * dstStride);
-
-                    for (int dx = 0; dx < canvasW; dx++)
-                    {
-                        int targetX = canvasX + dx;
-                        if (targetX < 0 || targetX >= dstBufW) continue;
-
-                        int sourceX = srcLeft + (int)((double)dx * srcW / canvasW);
-                        if (sourceX < 0 || sourceX >= srcBufW) continue;
-
-                        pDstLine[targetX] = pSrcLine[sourceX];
-                    }
+                    RECT viewport = new RECT { Left = s_lastSx0, Top = s_lastSy0,
+                        Right = s_lastSx0 + (int)Math.Round(576 * s_lastScaleX),
+                        Bottom = s_lastSy0 + (int)Math.Round(512 * s_lastScaleY) };
+                    Marshal.StructureToPtr(viewport, rects, false);
+                    DownsampleMapRegion(srcPixMap, dstPixMap, rects, IntPtr.Add(rects, 16),
+                        new RECT { Left = canvasX, Top = canvasY, Right = canvasX + canvasW, Bottom = canvasY + canvasH }, false);
                 }
+                finally { Marshal.FreeHGlobal(rects); }
 
                 // Update s_cachedCanvasDC at the dirty rectangle
                 if (s_cachedCanvasDC != IntPtr.Zero)
@@ -2368,6 +2511,12 @@ namespace Imp2Net
 
         public static unsafe void DownsampleMapBuffer(IntPtr srcPixMap, IntPtr dstPixMap, IntPtr pSrcRect, IntPtr pDstRect)
         {
+            DownsampleMapRegion(srcPixMap, dstPixMap, pSrcRect, pDstRect,
+                new RECT { Left = 10, Top = 58, Right = 586, Bottom = 570 }, true);
+        }
+
+        private static unsafe void DownsampleMapRegion(IntPtr srcPixMap, IntPtr dstPixMap, IntPtr pSrcRect, IntPtr pDstRect, RECT dirty, bool updateViewport)
+        {
             try
             {
                 IntPtr pSrcDib = Marshal.ReadIntPtr(srcPixMap, 0x1C);
@@ -2384,6 +2533,10 @@ namespace Imp2Net
                 int srcH = Marshal.ReadInt32(pSrcBmi, 8);
                 int dstW = Marshal.ReadInt32(pDstBmi, 4);
                 int dstH = Marshal.ReadInt32(pDstBmi, 8);
+                if (srcW <= 0 || srcH == 0 || srcH == int.MinValue || dstW <= 0 || dstH == 0 || dstH == int.MinValue
+                    || Marshal.ReadInt16(pSrcBmi, 14) != 16 || Marshal.ReadInt16(pDstBmi, 14) != 16) return;
+                // Native GDI may have queued writes into these DIB sections.
+                GdiFlush();
 
                 int srcStride = ((srcW * 2 + 3) / 4) * 4;
                 int dstStride = ((dstW * 2 + 3) / 4) * 4;
@@ -2421,15 +2574,20 @@ namespace Imp2Net
                 double scaleY = (double)sh / dh;
 
                 // Cache viewport transformation parameters for label overlay
-                s_lastSx0 = sx0;
-                s_lastSy0 = sy0;
-                s_lastScaleX = scaleX;
-                s_lastScaleY = scaleY;
+                if (updateViewport)
+                {
+                    s_lastSx0 = sx0;
+                    s_lastSy0 = sy0;
+                    s_lastScaleX = scaleX;
+                    s_lastScaleY = scaleY;
+                }
+                int firstX = Math.Max(0, dirty.Left - dx0), lastX = Math.Min(dw, dirty.Right - dx0);
+                int firstY = Math.Max(0, dirty.Top - dy0), lastY = Math.Min(dh, dirty.Bottom - dy0);
 
                 if (s_zoomFilter == ZoomFilter.Nearest)
                 {
                     // 1. Pure Point-Sampling: 100% crisp pixel art, zero blur
-                    for (int y = 0; y < dh; y++)
+                    for (int y = firstY; y < lastY; y++)
                     {
                         int dstYActual = dy0 + y;
                         if (dstYActual < 0 || dstYActual >= absDstH) continue;
@@ -2441,7 +2599,7 @@ namespace Imp2Net
                         int srcScanY = srcBottomUp ? (absSrcH - 1 - sy) : sy;
                         ushort* pSrcRow = (ushort*)(pSrcBase + srcScanY * srcStride);
 
-                        for (int x = 0; x < dw; x++)
+                        for (int x = firstX; x < lastX; x++)
                         {
                             int dstXActual = dx0 + x;
                             if (dstXActual < 0 || dstXActual >= dstW) continue;
@@ -2456,7 +2614,7 @@ namespace Imp2Net
                 else if (s_zoomFilter == ZoomFilter.Sharp)
                 {
                     // 2. Contrast-Preserved: 75% center point sample + 25% box average
-                    for (int y = 0; y < dh; y++)
+                    for (int y = firstY; y < lastY; y++)
                     {
                         int dstYActual = dy0 + y;
                         if (dstYActual < 0 || dstYActual >= absDstH) continue;
@@ -2474,7 +2632,7 @@ namespace Imp2Net
                         int centerScanY = srcBottomUp ? (absSrcH - 1 - centerSy) : centerSy;
                         ushort* pCenterRow = (ushort*)(pSrcBase + centerScanY * srcStride);
 
-                        for (int x = 0; x < dw; x++)
+                        for (int x = firstX; x < lastX; x++)
                         {
                             int dstXActual = dx0 + x;
                             if (dstXActual < 0 || dstXActual >= dstW) continue;
@@ -2548,7 +2706,7 @@ namespace Imp2Net
                 else
                 {
                     // 3. Smooth Area-Averaging Box Filter
-                    for (int y = 0; y < dh; y++)
+                    for (int y = firstY; y < lastY; y++)
                     {
                         int dstYActual = dy0 + y;
                         if (dstYActual < 0 || dstYActual >= absDstH) continue;
@@ -2561,7 +2719,7 @@ namespace Imp2Net
                         int yEnd = (int)Math.Ceiling(srcEndY);
                         if (yEnd <= yStart) yEnd = yStart + 1;
 
-                        for (int x = 0; x < dw; x++)
+                        for (int x = firstX; x < lastX; x++)
                         {
                             int dstXActual = dx0 + x;
                             if (dstXActual < 0 || dstXActual >= dstW) continue;
@@ -2625,7 +2783,7 @@ namespace Imp2Net
                 Marshal.WriteInt32(pDstRect, 8, 586);
                 Marshal.WriteInt32(pDstRect, 12, 570);
 
-                if (s_cachedCanvasDC != IntPtr.Zero && s_cachedCanvasBmp != IntPtr.Zero)
+                if (updateViewport && s_cachedCanvasDC != IntPtr.Zero && s_cachedCanvasBmp != IntPtr.Zero)
                 {
                     SetDIBits(s_cachedCanvasDC, s_cachedCanvasBmp, 0, (uint)absDstH, pDstBits, pDstBmi, 0);
                 }
@@ -3144,12 +3302,57 @@ namespace Imp2Net
                     VirtualProtect((IntPtr)callSite, (UIntPtr)5, oldProtect, out oldProtect);
                 }
 
+                InstallAnimationBoundsHook();
+                InstallAnimationHooks();
                 Log("Option B tactical map zoom-out engine hooks installed successfully (Buffer=2464x2304, TMapDialog::Draw @Slot69, SafeTileAlloc @0x0055D3E3, CopyBits @0x0055D889, DrawString @0x0040A63C, SelectionCopyBits x4, DrawSelectionBox @Slot125).");
             }
             catch (Exception ex)
             {
                 Log("Option B engine hooks installation error: {0}", ex);
             }
+        }
+
+        private static void InstallAnimationHooks()
+        {
+            // Validate the entire set before modifying any slot. Tick is vtable +0x28.
+            int[] expected = { 0x004041F6, 0x00408E40, 0x004063E8, 0x00402608, 0x00402608, 0x00408922 };
+            for (int i = 0; i < s_animationVtables.Length; i++)
+                if (Marshal.ReadInt32((IntPtr)(s_animationVtables[i] + 0x28)) != expected[i])
+                    throw new InvalidOperationException(string.Format("Animation Tick signature mismatch at 0x{0:X8}", s_animationVtables[i] + 0x28));
+            for (int i = 0; i < s_animationVtables.Length; i++)
+            {
+                IntPtr vt = (IntPtr)s_animationVtables[i];
+                IntPtr slot = IntPtr.Add(vt, 0x28);
+                s_originalAnimationTicks.Add(vt, (AnimationTickDelegate)Marshal.GetDelegateForFunctionPointer((IntPtr)expected[i], typeof(AnimationTickDelegate)));
+                uint old;
+                if (!VirtualProtect(slot, (UIntPtr)4, PAGE_EXECUTE_READWRITE, out old))
+                    throw new InvalidOperationException("Cannot make animation vtable writable.");
+                Marshal.WriteIntPtr(slot, Marshal.GetFunctionPointerForDelegate(s_myAnimationTick));
+                uint ignored;
+                VirtualProtect(slot, (UIntPtr)4, old, out ignored);
+            }
+            Log("Animation Tick hooks installed (6 classes); AnimationLog={0}.", s_animationLog ? 1 : 0);
+        }
+
+        private static void InstallAnimationBoundsHook()
+        {
+            IntPtr call = (IntPtr)CALL_MAP_UPDATE_ANIMATION_LOCS;
+            if (Marshal.ReadByte(call) != 0xE8 || unchecked(CALL_MAP_UPDATE_ANIMATION_LOCS + 5 + Marshal.ReadInt32(call, 1)) != ADDR_UPDATE_ANIMATION_LOCS)
+                throw new InvalidOperationException("Map animation-location call signature mismatch.");
+            s_originalAnimationLocations = (AnimationLocationsDelegate)Marshal.GetDelegateForFunctionPointer(
+                (IntPtr)ADDR_UPDATE_ANIMATION_LOCS, typeof(AnimationLocationsDelegate));
+            byte[] patch = new byte[5];
+            patch[0] = 0xE8;
+            Buffer.BlockCopy(BitConverter.GetBytes(unchecked(Marshal.GetFunctionPointerForDelegate(s_myAnimationLocations).ToInt32()
+                - (CALL_MAP_UPDATE_ANIMATION_LOCS + 5))), 0, patch, 1, 4);
+            uint old;
+            if (!VirtualProtect(call, (UIntPtr)5, PAGE_EXECUTE_READWRITE, out old))
+                throw new InvalidOperationException("Cannot make animation-location call writable.");
+            try { Marshal.Copy(patch, 0, call, 5); }
+            finally { uint ignored; VirtualProtect(call, (UIntPtr)5, old, out ignored); }
+            if (!FlushInstructionCache(GetCurrentProcess(), call, (UIntPtr)5))
+                throw new InvalidOperationException("Cannot flush animation-location instruction cache.");
+            Log("Expanded map animation retention bounds installed at 0x0055AB36.");
         }
 
         private static int MyStretchDIBitsHook(
@@ -3316,6 +3519,14 @@ namespace Imp2Net
                     if (lpRect != IntPtr.Zero)
                     {
                         RECT rc = (RECT)Marshal.PtrToStructure(lpRect, typeof(RECT));
+                        if (IsZoomedMapAnimation)
+                        {
+                            rc = MapAnimationRectangle(rc);
+                            rc.Left = Math.Max(10, rc.Left); rc.Top = Math.Max(58, rc.Top);
+                            rc.Right = Math.Min(586, rc.Right); rc.Bottom = Math.Min(570, rc.Bottom);
+                            if (rc.Right <= rc.Left || rc.Bottom <= rc.Top) return true;
+                            s_animationInvalidations++;
+                        }
                         int rLeft = Math.Max(0, Math.Min(800, rc.Left));
                         int rTop = Math.Max(0, Math.Min(600, rc.Top));
                         int rRight = Math.Max(0, Math.Min(800, rc.Right));
@@ -3387,6 +3598,7 @@ namespace Imp2Net
                     if (lpRect != IntPtr.Zero)
                     {
                         RECT rc = (RECT)Marshal.PtrToStructure(lpRect, typeof(RECT));
+                        if (IsZoomedMapAnimation) rc = MapAnimationRectangle(rc);
                         int rLeft = Math.Max(0, Math.Min(800, rc.Left));
                         int rTop = Math.Max(0, Math.Min(600, rc.Top));
                         int rRight = Math.Max(0, Math.Min(800, rc.Right));
@@ -3496,6 +3708,15 @@ namespace Imp2Net
                     lprect.Top = vy1;
                     lprect.Right = vx2;
                     lprect.Bottom = vy2;
+                    if (IsZoomedMapAnimation)
+                    {
+                        double sx = Math.Ceiling(576.0 / s_zoomLevel) / 576.0;
+                        double sy = Math.Ceiling(512.0 / s_zoomLevel) / 512.0;
+                        lprect.Left = 10 + (int)Math.Floor((Math.Max(10, vx1) - 10) * sx);
+                        lprect.Top = 58 + (int)Math.Floor((Math.Max(58, vy1) - 58) * sy);
+                        lprect.Right = 10 + (int)Math.Ceiling((Math.Min(586, vx2) - 10) * sx);
+                        lprect.Bottom = 58 + (int)Math.Ceiling((Math.Min(570, vy2) - 58) * sy);
+                    }
                 }
             }
             return res;
@@ -3506,6 +3727,11 @@ namespace Imp2Net
             IntPtr hWnd = WindowFromDC(hdc);
             if ((hWnd == s_viewHwnd || hWnd == s_gameHwnd) && TargetW > 0 && TargetH > 0)
             {
+                if (IsZoomedMapAnimation)
+                {
+                    RECT rc = AnimationPhysicalRectangle(new RECT { Left = left, Top = top, Right = right, Bottom = bottom });
+                    return s_origIntersectClipRect(hdc, rc.Left, rc.Top, rc.Right, rc.Bottom);
+                }
                 int pL = DstX + (int)Math.Floor((double)left * TargetW / 800.0);
                 int pT = DstY + (int)Math.Floor((double)top * TargetH / 600.0);
                 int pR = DstX + (int)Math.Ceiling((double)right * TargetW / 800.0);
@@ -3532,6 +3758,11 @@ namespace Imp2Net
             IntPtr hWnd = WindowFromDC(hdc);
             if ((hWnd == s_viewHwnd || hWnd == s_gameHwnd) && TargetW > 0 && TargetH > 0)
             {
+                if (IsZoomedMapAnimation)
+                {
+                    RECT rc = AnimationPhysicalRectangle(new RECT { Left = left, Top = top, Right = right, Bottom = bottom });
+                    return s_origExcludeClipRect(hdc, rc.Left, rc.Top, rc.Right, rc.Bottom);
+                }
                 int pL = DstX + (int)Math.Floor((double)left * TargetW / 800.0);
                 int pT = DstY + (int)Math.Floor((double)top * TargetH / 600.0);
                 int pR = DstX + (int)Math.Ceiling((double)right * TargetW / 800.0);
@@ -3582,7 +3813,7 @@ namespace Imp2Net
                     if (gy < 0) gy = 0;
                     if (gy > 599) gy = 599;
 
-                    if (s_zoomEnabled && s_zoomLevel != 1.0f && gx >= 8 && gx <= 586 && gy >= 58 && gy <= 570)
+                    if (s_zoomEnabled && s_zoomLevel > 1.0f && gx >= 8 && gx <= 586 && gy >= 58 && gy <= 570)
                     {
                         int mx, my;
                         MapZoomCoordinate(gx, gy, out mx, out my);
@@ -3790,7 +4021,7 @@ namespace Imp2Net
                             if (gameY < 0) gameY = 0;
                             if (gameY > 599) gameY = 599;
 
-                            if (s_zoomEnabled && s_zoomLevel != 1.0f && gameX >= 8 && gameX <= 586 && gameY >= 58 && gameY <= 570)
+                            if (s_zoomEnabled && s_zoomLevel > 1.0f && gameX >= 8 && gameX <= 586 && gameY >= 58 && gameY <= 570)
                             {
                                 int mx, my;
                                 MapZoomCoordinate(gameX, gameY, out mx, out my);

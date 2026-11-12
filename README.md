@@ -8,6 +8,10 @@ Community bugfix & modern multiplayer patch for **Imperialism II: The Age of Exp
 
 ## What This Fixes
 
+### High-resolution world-map zoom and animation
+
+The graphics bridge supports an expanded world-map viewport and mouse-wheel zoom. Terrain, click routing, and animation alignment are under investigation; independent native redraw paths still need coverage. See [Map coordinate contract](docs/MapCoordinateContract.md) for executable evidence, tile lookup, the shared rendering/input transform, and remaining defects. [Map animation troubleshooting](docs/MapAnimationTroubleshooting.md) records the earlier fixes and diagnostics.
+
 ### 1. Modern Single-Port TCP/IP Multiplayer (`dplayx.dll` + `ImpII.exe`)
 Original *Imperialism II* (1999) relied on Windows 98 DirectPlay 4 (`IDirectPlay4A` / `IDirectPlayLobby3A`), which is broken or painful to use on Windows 10/11:
 * Required installing the deprecated Windows **Legacy DirectPlay** optional feature and global COM registry keys.

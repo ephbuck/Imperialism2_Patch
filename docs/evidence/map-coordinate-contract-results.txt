@@ -1,0 +1,223 @@
+PASS native fixture preserves region classification 1 rather than treating it as bool
+PASS native fixture preserves region classification 2 rather than treating it as bool
+PASS native fixture preserves region classification 3 rather than treating it as bool
+PASS native fixture preserves region classification 4 rather than treating it as bool
+PASS native x87 truncation maps X=-1 to column zero rather than floor-based column 107
+PASS one negative-column wrap crosses the cylinder seam
+PASS native truncation preserves the top-edge Y=-1 row-zero behavior
+PASS native normalization clamps a negative decoded row to zero
+PASS native normalization clamps past-bottom decoded rows to 59
+PASS native one-wrap limitation remains visible for X beyond a full negative circumference
+PASS native one-wrap limitation remains visible for X beyond two circumferences
+PASS real sampler records source origin at zoom=0.75 origin=64,64
+PASS real sampler records exact rounded source extents at zoom=0.75
+PASS physical click returns intended native tile: zoom=0.75 Fit tile=105,21 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.75 Fit tile=105,21 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.75 Fit tile=105,21 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.75 Fit tile=105,21 source=64,64
+PASS physical click returns intended native tile: zoom=0.75 Fit tile=0,22 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.75 Fit tile=0,22 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.75 Fit tile=0,22 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.75 Fit tile=0,22 source=64,64
+PASS physical click returns intended native tile: zoom=0.75 Fit tile=1,23 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.75 Fit tile=1,23 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.75 Fit tile=1,23 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.75 Fit tile=1,23 source=64,64
+PASS physical click returns intended native tile: zoom=0.75 Fit tile=3,24 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.75 Fit tile=3,24 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.75 Fit tile=3,24 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.75 Fit tile=3,24 source=64,64
+PASS physical click returns intended native tile: zoom=0.75 Stretch tile=105,21 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.75 Stretch tile=105,21 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.75 Stretch tile=105,21 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.75 Stretch tile=105,21 source=64,64
+PASS physical click returns intended native tile: zoom=0.75 Stretch tile=0,22 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.75 Stretch tile=0,22 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.75 Stretch tile=0,22 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.75 Stretch tile=0,22 source=64,64
+PASS physical click returns intended native tile: zoom=0.75 Stretch tile=1,23 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.75 Stretch tile=1,23 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.75 Stretch tile=1,23 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.75 Stretch tile=1,23 source=64,64
+PASS physical click returns intended native tile: zoom=0.75 Stretch tile=3,24 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.75 Stretch tile=3,24 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.75 Stretch tile=3,24 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.75 Stretch tile=3,24 source=64,64
+PASS animation helper shares canonical terrain anchor at zoom=0.75
+PASS real sampler records source origin at zoom=0.5 origin=64,64
+PASS real sampler records exact rounded source extents at zoom=0.5
+PASS physical click returns intended native tile: zoom=0.5 Fit tile=105,21 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.5 Fit tile=105,21 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.5 Fit tile=105,21 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.5 Fit tile=105,21 source=64,64
+PASS physical click returns intended native tile: zoom=0.5 Fit tile=0,22 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.5 Fit tile=0,22 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.5 Fit tile=0,22 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.5 Fit tile=0,22 source=64,64
+PASS physical click returns intended native tile: zoom=0.5 Fit tile=1,23 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.5 Fit tile=1,23 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.5 Fit tile=1,23 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.5 Fit tile=1,23 source=64,64
+PASS physical click returns intended native tile: zoom=0.5 Fit tile=3,24 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.5 Fit tile=3,24 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.5 Fit tile=3,24 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.5 Fit tile=3,24 source=64,64
+PASS physical click returns intended native tile: zoom=0.5 Stretch tile=105,21 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.5 Stretch tile=105,21 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.5 Stretch tile=105,21 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.5 Stretch tile=105,21 source=64,64
+PASS physical click returns intended native tile: zoom=0.5 Stretch tile=0,22 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.5 Stretch tile=0,22 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.5 Stretch tile=0,22 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.5 Stretch tile=0,22 source=64,64
+PASS physical click returns intended native tile: zoom=0.5 Stretch tile=1,23 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.5 Stretch tile=1,23 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.5 Stretch tile=1,23 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.5 Stretch tile=1,23 source=64,64
+PASS physical click returns intended native tile: zoom=0.5 Stretch tile=3,24 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.5 Stretch tile=3,24 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.5 Stretch tile=3,24 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.5 Stretch tile=3,24 source=64,64
+PASS animation helper shares canonical terrain anchor at zoom=0.5
+PASS real sampler records source origin at zoom=0.25 origin=64,64
+PASS real sampler records exact rounded source extents at zoom=0.25
+PASS physical click returns intended native tile: zoom=0.25 Fit tile=105,21 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.25 Fit tile=105,21 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.25 Fit tile=105,21 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.25 Fit tile=105,21 source=64,64
+PASS physical click returns intended native tile: zoom=0.25 Fit tile=0,22 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.25 Fit tile=0,22 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.25 Fit tile=0,22 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.25 Fit tile=0,22 source=64,64
+PASS physical click returns intended native tile: zoom=0.25 Fit tile=1,23 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.25 Fit tile=1,23 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.25 Fit tile=1,23 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.25 Fit tile=1,23 source=64,64
+PASS physical click returns intended native tile: zoom=0.25 Fit tile=3,24 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.25 Fit tile=3,24 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.25 Fit tile=3,24 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.25 Fit tile=3,24 source=64,64
+PASS physical click returns intended native tile: zoom=0.25 Stretch tile=105,21 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.25 Stretch tile=105,21 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.25 Stretch tile=105,21 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.25 Stretch tile=105,21 source=64,64
+PASS physical click returns intended native tile: zoom=0.25 Stretch tile=0,22 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.25 Stretch tile=0,22 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.25 Stretch tile=0,22 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.25 Stretch tile=0,22 source=64,64
+PASS physical click returns intended native tile: zoom=0.25 Stretch tile=1,23 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.25 Stretch tile=1,23 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.25 Stretch tile=1,23 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.25 Stretch tile=1,23 source=64,64
+PASS physical click returns intended native tile: zoom=0.25 Stretch tile=3,24 source=64,64
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.25 Stretch tile=3,24 source=64,64
+PASS tile hook preserves caller map-local point: zoom=0.25 Stretch tile=3,24 source=64,64
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.25 Stretch tile=3,24 source=64,64
+PASS animation helper shares canonical terrain anchor at zoom=0.25
+PASS real sampler records source origin at zoom=0.75 origin=74,122
+PASS real sampler records exact rounded source extents at zoom=0.75
+PASS physical click returns intended native tile: zoom=0.75 Fit tile=105,21 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.75 Fit tile=105,21 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.75 Fit tile=105,21 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.75 Fit tile=105,21 source=74,122
+PASS physical click returns intended native tile: zoom=0.75 Fit tile=0,22 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.75 Fit tile=0,22 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.75 Fit tile=0,22 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.75 Fit tile=0,22 source=74,122
+PASS physical click returns intended native tile: zoom=0.75 Fit tile=1,23 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.75 Fit tile=1,23 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.75 Fit tile=1,23 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.75 Fit tile=1,23 source=74,122
+PASS physical click returns intended native tile: zoom=0.75 Fit tile=3,24 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.75 Fit tile=3,24 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.75 Fit tile=3,24 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.75 Fit tile=3,24 source=74,122
+PASS physical click returns intended native tile: zoom=0.75 Stretch tile=105,21 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.75 Stretch tile=105,21 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.75 Stretch tile=105,21 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.75 Stretch tile=105,21 source=74,122
+PASS physical click returns intended native tile: zoom=0.75 Stretch tile=0,22 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.75 Stretch tile=0,22 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.75 Stretch tile=0,22 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.75 Stretch tile=0,22 source=74,122
+PASS physical click returns intended native tile: zoom=0.75 Stretch tile=1,23 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.75 Stretch tile=1,23 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.75 Stretch tile=1,23 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.75 Stretch tile=1,23 source=74,122
+PASS physical click returns intended native tile: zoom=0.75 Stretch tile=3,24 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.75 Stretch tile=3,24 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.75 Stretch tile=3,24 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.75 Stretch tile=3,24 source=74,122
+DIAGNOSTIC zoom=0.75 source=(74,122) terrain anchor=(152,149) animation anchor=(160,192): zoom-only animation geometry omits the sampled source offset.
+PASS real sampler records source origin at zoom=0.5 origin=74,122
+PASS real sampler records exact rounded source extents at zoom=0.5
+PASS physical click returns intended native tile: zoom=0.5 Fit tile=105,21 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.5 Fit tile=105,21 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.5 Fit tile=105,21 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.5 Fit tile=105,21 source=74,122
+PASS physical click returns intended native tile: zoom=0.5 Fit tile=0,22 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.5 Fit tile=0,22 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.5 Fit tile=0,22 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.5 Fit tile=0,22 source=74,122
+PASS physical click returns intended native tile: zoom=0.5 Fit tile=1,23 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.5 Fit tile=1,23 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.5 Fit tile=1,23 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.5 Fit tile=1,23 source=74,122
+PASS physical click returns intended native tile: zoom=0.5 Fit tile=3,24 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.5 Fit tile=3,24 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.5 Fit tile=3,24 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.5 Fit tile=3,24 source=74,122
+PASS physical click returns intended native tile: zoom=0.5 Stretch tile=105,21 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.5 Stretch tile=105,21 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.5 Stretch tile=105,21 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.5 Stretch tile=105,21 source=74,122
+PASS physical click returns intended native tile: zoom=0.5 Stretch tile=0,22 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.5 Stretch tile=0,22 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.5 Stretch tile=0,22 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.5 Stretch tile=0,22 source=74,122
+PASS physical click returns intended native tile: zoom=0.5 Stretch tile=1,23 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.5 Stretch tile=1,23 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.5 Stretch tile=1,23 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.5 Stretch tile=1,23 source=74,122
+PASS physical click returns intended native tile: zoom=0.5 Stretch tile=3,24 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.5 Stretch tile=3,24 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.5 Stretch tile=3,24 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.5 Stretch tile=3,24 source=74,122
+DIAGNOSTIC zoom=0.5 source=(74,122) terrain anchor=(105,119) animation anchor=(110,148): zoom-only animation geometry omits the sampled source offset.
+PASS real sampler records source origin at zoom=0.25 origin=74,122
+PASS real sampler records exact rounded source extents at zoom=0.25
+PASS physical click returns intended native tile: zoom=0.25 Fit tile=105,21 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.25 Fit tile=105,21 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.25 Fit tile=105,21 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.25 Fit tile=105,21 source=74,122
+PASS physical click returns intended native tile: zoom=0.25 Fit tile=0,22 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.25 Fit tile=0,22 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.25 Fit tile=0,22 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.25 Fit tile=0,22 source=74,122
+PASS physical click returns intended native tile: zoom=0.25 Fit tile=1,23 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.25 Fit tile=1,23 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.25 Fit tile=1,23 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.25 Fit tile=1,23 source=74,122
+PASS physical click returns intended native tile: zoom=0.25 Fit tile=3,24 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.25 Fit tile=3,24 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.25 Fit tile=3,24 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.25 Fit tile=3,24 source=74,122
+PASS physical click returns intended native tile: zoom=0.25 Stretch tile=105,21 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.25 Stretch tile=105,21 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.25 Stretch tile=105,21 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.25 Stretch tile=105,21 source=74,122
+PASS physical click returns intended native tile: zoom=0.25 Stretch tile=0,22 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.25 Stretch tile=0,22 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.25 Stretch tile=0,22 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.25 Stretch tile=0,22 source=74,122
+PASS physical click returns intended native tile: zoom=0.25 Stretch tile=1,23 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.25 Stretch tile=1,23 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.25 Stretch tile=1,23 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.25 Stretch tile=1,23 source=74,122
+PASS physical click returns intended native tile: zoom=0.25 Stretch tile=3,24 source=74,122
+PASS real downsampled terrain pixel agrees with clicked tile: zoom=0.25 Stretch tile=3,24 source=74,122
+PASS tile hook preserves caller map-local point: zoom=0.25 Stretch tile=3,24 source=74,122
+PASS native fixture writes 16-bit column, row and region outputs: zoom=0.25 Stretch tile=3,24 source=74,122
+DIAGNOSTIC zoom=0.25 source=(74,122) terrain anchor=(57,88) animation anchor=(60,103): zoom-only animation geometry omits the sampled source offset.
+All 218 map coordinate contract checks passed; 3 source-offset animation discrepancies reported.
+Native decoder and pane localization are controlled fixtures; native callback ABI and actual gameplay remain outside this suite.

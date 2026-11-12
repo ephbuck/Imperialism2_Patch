@@ -1,0 +1,180 @@
+{
+  "path": "C:\\Users\\ephbu\\Documents\\GitHub\\Imperialism2_Patch\\ImpII.exe",
+  "sha256": "1BE0901F3FC2B5896122A470A05E8405CB7D8E3ABBD0425BE0EFEBCF5C071253",
+  "evidence_kind": "Direct PE bytes and verified x86 instruction anchors; not REA decompilation or execution",
+  "anchors": [
+    {
+      "address": "0x0055A5A9",
+      "bytes": "8B-47-04-03-46-68",
+      "observation": "Tile lookup adds camera Y to point Y"
+    },
+    {
+      "address": "0x0055A5D2",
+      "bytes": "8D-44-11-20",
+      "observation": "Odd row adds 32 before column conversion"
+    },
+    {
+      "address": "0x0055A5E9",
+      "bytes": "48",
+      "observation": "Odd row decrements converted column"
+    },
+    {
+      "address": "0x0055A608",
+      "bytes": "66-89-01",
+      "observation": "Tile lookup writes a 16-bit column"
+    },
+    {
+      "address": "0x0055D140",
+      "bytes": "51-8D-44-24-44-52-50-FF-15-44-C5-76-00",
+      "observation": "Draw offsets its rectangle by the 64px buffer margin via OffsetRect"
+    },
+    {
+      "address": "0x006816BF",
+      "bytes": "80-CC-0C",
+      "observation": "Float conversion selects x87 truncation, not floor"
+    },
+    {
+      "address": "0x00550347",
+      "bytes": "66-3D-6C-00",
+      "observation": "Column normalization compares against 108"
+    },
+    {
+      "address": "0x0055036F",
+      "bytes": "66-3D-3C-00",
+      "observation": "Row normalization compares against 60"
+    },
+    {
+      "address": "0x005594E0",
+      "bytes": "C7-05-28-C0-75-00-00-00-00-00-C7-05-2C-C0-75-00-00-00-90-3F",
+      "observation": "Initializer sets row multiplier to IEEE754 double 1/64"
+    },
+    {
+      "address": "0x00559510",
+      "bytes": "C7-05-00-C0-75-00-00-00-00-00-C7-05-04-C0-75-00-00-00-90-3F",
+      "observation": "Initializer sets column multiplier to IEEE754 double 1/64"
+    },
+    {
+      "address": "0x00423BD4",
+      "bytes": "8B-51-28-56-8B-70-04-2B-F2",
+      "observation": "View point conversion subtracts the view origin from Y"
+    }
+  ],
+  "methods": [
+    {
+      "vtable": "0x00703900",
+      "slot": 69,
+      "thunk": "0x00409ADE",
+      "implementation": "0x0055D070"
+    },
+    {
+      "vtable": "0x00703900",
+      "slot": 75,
+      "thunk": "0x004044B7",
+      "implementation": "0x00423B20"
+    },
+    {
+      "vtable": "0x00703900",
+      "slot": 77,
+      "thunk": "0x004057B3",
+      "implementation": "0x00423B90"
+    },
+    {
+      "vtable": "0x00703900",
+      "slot": 110,
+      "thunk": "0x00402009",
+      "implementation": "0x005599C0"
+    },
+    {
+      "vtable": "0x00703900",
+      "slot": 113,
+      "thunk": "0x004078C9",
+      "implementation": "0x0055A5A0"
+    },
+    {
+      "vtable": "0x00703900",
+      "slot": 125,
+      "thunk": "0x00409EDF",
+      "implementation": "0x00559EB0"
+    },
+    {
+      "vtable": "0x00703B90",
+      "slot": 69,
+      "thunk": "0x00409ADE",
+      "implementation": "0x0055D070"
+    },
+    {
+      "vtable": "0x00703B90",
+      "slot": 75,
+      "thunk": "0x004044B7",
+      "implementation": "0x00423B20"
+    },
+    {
+      "vtable": "0x00703B90",
+      "slot": 77,
+      "thunk": "0x004057B3",
+      "implementation": "0x00423B90"
+    },
+    {
+      "vtable": "0x00703B90",
+      "slot": 110,
+      "thunk": "0x00403616",
+      "implementation": "0x0055B1D0"
+    },
+    {
+      "vtable": "0x00703B90",
+      "slot": 113,
+      "thunk": "0x004078C9",
+      "implementation": "0x0055A5A0"
+    },
+    {
+      "vtable": "0x00703B90",
+      "slot": 125,
+      "thunk": "0x00409EDF",
+      "implementation": "0x00559EB0"
+    },
+    {
+      "vtable": "0x00703E20",
+      "slot": 69,
+      "thunk": "0x00409ADE",
+      "implementation": "0x0055D070"
+    },
+    {
+      "vtable": "0x00703E20",
+      "slot": 75,
+      "thunk": "0x004044B7",
+      "implementation": "0x00423B20"
+    },
+    {
+      "vtable": "0x00703E20",
+      "slot": 77,
+      "thunk": "0x004057B3",
+      "implementation": "0x00423B90"
+    },
+    {
+      "vtable": "0x00703E20",
+      "slot": 110,
+      "thunk": "0x00402009",
+      "implementation": "0x005599C0"
+    },
+    {
+      "vtable": "0x00703E20",
+      "slot": 113,
+      "thunk": "0x004078C9",
+      "implementation": "0x0055A5A0"
+    },
+    {
+      "vtable": "0x00703E20",
+      "slot": 125,
+      "thunk": "0x00409EDF",
+      "implementation": "0x00559EB0"
+    }
+  ],
+  "tile_projection": "0x0054F680",
+  "tile_normalization": "0x00550340",
+  "row_multiplier_cell": "0x0075C028; static initializer 0x005594E0 stores double 1/64",
+  "column_multiplier_cell": "0x0075C000; static initializer 0x00559510 stores double 1/64",
+  "unknowns": [
+    "Indirect callers require contextual verification",
+    "Static inspection does not prove live hook coverage or rendered pixels"
+  ]
+}
