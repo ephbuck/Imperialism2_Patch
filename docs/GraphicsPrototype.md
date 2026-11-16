@@ -1,5 +1,7 @@
 # Graphics prototype: Stage 0
 
+**Current branch update (November 16, 2026):** this document describes the original observation foundation. The branch now also contains the opt-in native renderer and HD UI changes. See [HD implementation and validation status](HdImplementation.md) for current code, commands and outstanding gameplay gates.
+
 This implements the diagnostic and coordinate foundation from [the rendering plan](HighResolutionRenderingPlan.md). It **does not yet enable a higher-resolution map**. Native map rendering, bounded terrain-cache eviction, physical presentation and independent UI composition still need integration. No graphics patch has been applied to `ImpII.exe` or `dplayx.dll`.
 
 ## Implemented

@@ -39,6 +39,10 @@ namespace Imp2Net
         private static IntPtr activeMap;
         private static bool installed;
         private static int viewportWidth = 800, viewportHeight = 600;
+        private static int mapLeft=10,mapTop=58,mapWidth=576,mapHeight=512;
+        private static int edgeScrollMargin=128;
+        public static int EdgeScrollMargin { get { return edgeScrollMargin; } }
+        public static void SetEdgeScrollMargin(int pixels) { edgeScrollMargin=Math.Max(8,Math.Min(128,pixels)); }
         private static int pressedButtons;
         [ThreadStatic] private static int dispatchDepth;
         [ThreadStatic] private static Point dispatchPoint;
@@ -70,7 +74,13 @@ namespace Imp2Net
 
         public static void SetActiveMap(IntPtr map) { if (activeMap != map) pressedButtons = 0; activeMap = map; }
         public static void SetViewportSize(int width, int height)
-        { viewportWidth = Math.Max(800,width); viewportHeight = Math.Max(600,height); }
+        { viewportWidth = Math.Max(800,width); viewportHeight = Math.Max(600,height);
+            SetMapBounds(10,58,viewportWidth-224,viewportHeight-88); }
+        public static void SetMapBounds(int left,int top,int width,int height)
+        {
+            if(left<0 || top<0 || width<2 || height<2) throw new ArgumentOutOfRangeException("width");
+            mapLeft=left;mapTop=top;mapWidth=width;mapHeight=height;
+        }
         public static void Clear() { activeMap = IntPtr.Zero; pressedButtons = 0; }
         public static void Clear(IntPtr map) { if (activeMap == map) Clear(); }
 
@@ -116,11 +126,11 @@ namespace Imp2Net
             {
                 foreach (int address in Cells)
                 {
-                    WritePointer(address, replacement);
                     changed++;
+                    WritePointer(address, replacement);
                 }
-                for (int i = 0; i < DeleteCells.Length; i++) { WritePointer(DeleteCells[i], Marshal.GetFunctionPointerForDelegate(DeleteHooks[i])); changed++; }
-                for (int i = 0; i < FreeCells.Length; i++) { WritePointer(FreeCells[i], Marshal.GetFunctionPointerForDelegate(FreeHook)); changed++; }
+                for (int i = 0; i < DeleteCells.Length; i++) { changed++; WritePointer(DeleteCells[i], Marshal.GetFunctionPointerForDelegate(DeleteHooks[i])); }
+                for (int i = 0; i < FreeCells.Length; i++) { changed++; WritePointer(FreeCells[i], Marshal.GetFunctionPointerForDelegate(FreeHook)); }
                 installed = true;
             }
             catch
@@ -160,14 +170,14 @@ namespace Imp2Net
         {
             if (activeMap == IntPtr.Zero || OriginalMouseDispatch == null || message < 0x200 || message > 0x209)
                 return false;
-            bool inside = physicalX >= 10 && physicalX < viewportWidth - 214 && physicalY >= 58 && physicalY < viewportHeight - 30;
+            bool inside = physicalX >= mapLeft && physicalX < mapLeft+mapWidth && physicalY >= mapTop && physicalY < mapTop+mapHeight;
             if (!inside && pressedButtons == 0) return false;
             int button = message >= 0x201 && message <= 0x203 ? 1 : message >= 0x204 && message <= 0x206 ? 2 : message >= 0x207 ? 4 : 0;
             bool down = message == 0x201 || message == 0x203 || message == 0x204 || message == 0x206 || message == 0x207 || message == 0x209;
             bool up = message == 0x202 || message == 0x205 || message == 0x208;
             if (down) pressedButtons |= button;
             Point previous = dispatchPoint;
-            dispatchPoint = new Point { X = physicalX - 10, Y = physicalY - 58 };
+            dispatchPoint = new Point { X = physicalX - mapLeft, Y = physicalY - mapTop };
             dispatchDepth++;
             RoutedMessages++;
             try
@@ -187,23 +197,45 @@ namespace Imp2Net
         public static bool TryGetProxyPoint(int physicalX, int physicalY, out int proxyX, out int proxyY)
         {
             proxyX = physicalX; proxyY = physicalY;
-            if (activeMap == IntPtr.Zero || (dispatchDepth == 0 && pressedButtons == 0)) return false;
+            bool inside=physicalX>=mapLeft && physicalX<mapLeft+mapWidth && physicalY>=mapTop && physicalY<mapTop+mapHeight;
+            // Native idle/edge scrolling polls ScreenToClient between mouse
+            // messages, with no button held. Keep a map proxy available there;
+            // otherwise the UI-only transform returns its noninteractive sentinel.
+            if (activeMap == IntPtr.Zero || (!inside && dispatchDepth == 0 && pressedButtons == 0)) return false;
             GetProxyPoint(physicalX, physicalY, out proxyX, out proxyY);
             return true;
         }
 
         private static void GetProxyPoint(int physicalX, int physicalY, out int proxyX, out int proxyY)
         {
-            int width = viewportWidth - 224, height = viewportHeight - 88;
-            int localX = Math.Max(0, Math.Min(width-1,physicalX-10));
-            int localY = Math.Max(0, Math.Min(height-1,physicalY-58));
+            int width = mapWidth, height = mapHeight;
+            int localX = Math.Max(0, Math.Min(width-1,physicalX-mapLeft));
+            int localY = Math.Max(0, Math.Min(height-1,physicalY-mapTop));
             proxyX = 10 + (int)((long)localX * 575 / (width-1));
             proxyY = 58 + (int)((long)localY * 511 / (height-1));
         }
 
+        // Used only by the native autoscroll boundary test, after its normal
+        // foreground/modal guards. Pointer dispatch and tile decoding retain
+        // their own coordinates. UI panes and points outside the map never pan.
+        internal static Point EdgeScrollPoint(int physicalX,int physicalY,int nativeWidth,int nativeHeight)
+        {
+            if(activeMap==IntPtr.Zero || physicalX<mapLeft || physicalX>=mapLeft+mapWidth ||
+                physicalY<mapTop || physicalY>=mapTop+mapHeight || nativeWidth<10 || nativeHeight<10)
+                return new Point { X=-1000,Y=-1000 };
+            int band=Math.Min(edgeScrollMargin,Math.Max(1,Math.Min(mapWidth,mapHeight)/4));
+            return new Point {
+                X=physicalX-mapLeft<band ? 0 : mapLeft+mapWidth-physicalX<=band ? nativeWidth-1 : nativeWidth/2,
+                Y=physicalY-mapTop<band ? 0 : mapTop+mapHeight-physicalY<=band ? nativeHeight-1 : nativeHeight/2
+            };
+        }
+
         private static void DecodePoint(IntPtr self, IntPtr point, IntPtr column, IntPtr row, IntPtr subregion)
         {
-            if (dispatchDepth == 0 || self != activeMap || point == IntPtr.Zero)
+            // Native directional camera scrolling decodes its fixed (0,0)
+            // origin at 0x75C010, including inside a mouse-dispatch scope. It
+            // must never be replaced by the live pointer's tile coordinates.
+            if (dispatchDepth == 0 || self != activeMap || point == IntPtr.Zero || point == new IntPtr(0x75c010))
             {
                 original(self, point, column, row, subregion);
                 return;
@@ -214,7 +246,7 @@ namespace Imp2Net
             if (PhysicalCursor != null)
             {
                 Point physical = PhysicalCursor();
-                mapped.X = physical.X - 10; mapped.Y = physical.Y - 58;
+                mapped.X = physical.X - mapLeft; mapped.Y = physical.Y - mapTop;
             }
             IntPtr buffer = Marshal.AllocHGlobal(8);
             try

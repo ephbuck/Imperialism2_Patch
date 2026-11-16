@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Diagnostics;
+using System.Globalization;
 
 namespace Imp2Net
 {
@@ -19,6 +21,12 @@ namespace Imp2Net
         delegate void Idle(IntPtr self);
         [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
         delegate void MiniSize(IntPtr self, IntPtr size);
+        [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+        delegate void Border(IntPtr self, int x, int y);
+        [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+        delegate void ConvertEdgePoint(IntPtr self,IntPtr point);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        delegate void NativeInt(int value);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         delegate void CopyBits(IntPtr source, IntPtr destination, IntPtr sr, IntPtr dr, int mode, IntPtr mask);
 
@@ -26,20 +34,39 @@ namespace Imp2Net
         static readonly CopyBits copyHook = OnMapCopy;
         static readonly Idle focusHook = OnFocus, transparentHook = OnTransparent;
         static readonly MiniSize miniHook = OnMiniSize;
+        static readonly Border borderHook=OnBorder;
+        static readonly ConvertEdgePoint edgePointHook=OnEdgePoint;
+        static ConvertEdgePoint originalEdgePoint;
+        static IntPtr edgePointTarget;
         static readonly Dictionary<int, Selection> selections = new Dictionary<int, Selection>();
         static readonly List<Delegate> roots = new List<Delegate>();
         static Draw originalDraw;
         static Idle originalFocus, originalTransparent;
         static MiniSize originalMini;
         static CopyBits originalCopy;
+        static Border originalBorder;
+        static NativeInt borderColor, foreColor;
         static IntPtr active, mini;
         static IntPtr rectangle = Marshal.AllocHGlobal(16);
         static bool installed, drawing, sizeDirty = true;
+        static bool restoringTerrain;
+        static long terrainRestores,terrainRestoreMisses;
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        delegate void ProjectTile(int tile,IntPtr camera,IntPtr y,IntPtr x,int divisor);
+        static ProjectTile project;
         static int width = 576, height = 512;
         public static int MapWidth { get { return width; } }
         public static int MapHeight { get { return height; } }
         public static IntPtr ActiveMap { get { return active; } }
         public static long Frames { get; private set; }
+        static readonly Queue<double> drawTimes = new Queue<double>();
+        public static string Diagnostics()
+        {
+            double[] times=drawTimes.ToArray(); Array.Sort(times);
+            return String.Format(CultureInfo.InvariantCulture,"frames={0}, recentDrawSamples={1}, drawP50Ms={2:F3}, drawP95Ms={3:F3}, camera=({4},{5}), terrainRestores={6}, terrainRestoreMisses={7}, terrainRestoreErrors={8}",
+                Frames,times.Length,times.Length==0?0:times[(times.Length-1)/2],times.Length==0?0:times[(int)((times.Length-1)*.95)],
+                active==IntPtr.Zero?0:Marshal.ReadInt32(active,0x64),active==IntPtr.Zero?0:Marshal.ReadInt32(active,0x68),terrainRestores,terrainRestoreMisses,Imp2Net.Graphics.NativeMapCache.RegenerationErrors);
+        }
 
         public static void Log(string value)
         {
@@ -62,6 +89,8 @@ namespace Imp2Net
             foreach (int slot in new int[] { 0x703a14,0x703ca4,0x703f34 })
                 NativePatch.Require(slot, BitConverter.GetBytes(0x409ade));
             NativePatch.RequireCall(0x55d889, 0x404e8f);
+            NativePatch.RequireCall(0x55d800, 0x4028a1);
+            NativePatch.Require(0x4b6ce8,new byte[]{0xff,0x90,0x48,1,0,0});
             RequireGeometry();
             // A maximum-sized guarded tactical target is allocated once by the
             // original engine and reused across resize. No live GWorld is freed.
@@ -71,8 +100,16 @@ namespace Imp2Net
             NativePatch.Write(0x49435a, new byte[] { 0x31,0xc9,0x90 });
             originalDraw = (Draw)Marshal.GetDelegateForFunctionPointer((IntPtr)0x409ade, typeof(Draw));
             originalCopy = (CopyBits)Marshal.GetDelegateForFunctionPointer((IntPtr)0x404e8f, typeof(CopyBits));
+            project=(ProjectTile)Marshal.GetDelegateForFunctionPointer((IntPtr)0x4050dd,typeof(ProjectTile));
+            originalBorder=(Border)Marshal.GetDelegateForFunctionPointer((IntPtr)0x4028a1,typeof(Border));
+            borderColor=(NativeInt)Marshal.GetDelegateForFunctionPointer((IntPtr)0x4010f5,typeof(NativeInt));
+            foreColor=(NativeInt)Marshal.GetDelegateForFunctionPointer((IntPtr)0x4067f8,typeof(NativeInt));
             foreach (int slot in new int[] { 0x703a14,0x703ca4,0x703f34 }) NativePatch.Pointer(slot, drawHook);
             NativePatch.Write(0x55d889, NativePatch.Branch(0xe8, 0x55d889, Marshal.GetFunctionPointerForDelegate(copyHook).ToInt32()));
+            NativePatch.Write(0x55d800,NativePatch.Branch(0xe8,0x55d800,Marshal.GetFunctionPointerForDelegate(borderHook).ToInt32()));
+            byte[] edgeCall=new byte[6];
+            Array.Copy(NativePatch.Branch(0xe8,0x4b6ce8,Marshal.GetFunctionPointerForDelegate(edgePointHook).ToInt32()),edgeCall,5);
+            edgeCall[5]=0x90;NativePatch.Write(0x4b6ce8,edgeCall);
             // Keep the distinct Old/New World selection implementations.
             int[] selectionSlots = { 0x703ab8,0x703d48,0x703fd8 };
             int[] selectionTargets = { 0x402009,0x403616,0x402009 };
@@ -93,6 +130,7 @@ namespace Imp2Net
             WindowedMapBridge.MapActive = IsActive;
             WindowedMapBridge.SizeChanged = Resize;
             WindowedMapBridge.RenderMap = Redraw;
+            Imp2Net.Graphics.NativeMapCache.EnsureTerrain=EnsureTerrain;
             NativeMapInput.MapDestroyed = delegate(IntPtr map) { if (active == map) { active = IntPtr.Zero; mini = IntPtr.Zero; } };
             Resize(WindowedMapBridge.ClientWidth, WindowedMapBridge.ClientHeight);
             installed = true;
@@ -118,8 +156,9 @@ namespace Imp2Net
         public static void Resize(int clientWidth, int clientHeight)
         {
             NativeMapInput.SetViewportSize(clientWidth, clientHeight);
-            width = Math.Max(576, Math.Min(3616, clientWidth - 224));
-            height = Math.Max(512, Math.Min(2072, clientHeight - 88));
+            Imp2Net.Graphics.PixelRect bounds = WindowedMapBridge.Layout.Map;
+            width = bounds.Width; height = bounds.Height;
+            NativeMapInput.SetMapBounds(bounds.Left,bounds.Top,width,height);
             NativePatch.Write(0x55a756, BitConverter.GetBytes((short)width));
             NativePatch.Write(0x55a75c, BitConverter.GetBytes((short)height));
             byte lastRow = (byte)Math.Max(0, (3840 - height) / 64);
@@ -143,12 +182,62 @@ namespace Imp2Net
             if (!drawing && IsActive()) OnDraw(active, rectangle);
         }
 
+        // The root still dispatches the logical 800x600 UI. Leaving the map
+        // child enlarged between draws makes it cover the logical sidebar and
+        // steal its clicks. Native map rendering alone needs the larger extent.
+        internal static IDisposable UseNativeMapBounds(IntPtr map)
+        { return new MapBoundsScope(map,width,height); }
+        sealed class MapBoundsScope : IDisposable
+        {
+            readonly IntPtr map;
+            readonly int oldWidth,oldHeight;
+            bool disposed;
+            internal MapBoundsScope(IntPtr map,int w,int h)
+            {
+                this.map=map;oldWidth=Marshal.ReadInt32(map,0x34);oldHeight=Marshal.ReadInt32(map,0x38);
+                Marshal.WriteInt32(map,0x34,w);Marshal.WriteInt32(map,0x38,h);
+            }
+            public void Dispose() {
+                if(disposed)return;disposed=true;
+                Marshal.WriteInt32(map,0x34,oldWidth);Marshal.WriteInt32(map,0x38,oldHeight);
+            }
+        }
+
+        static int EnsureTerrain(IntPtr map,int tile)
+        {
+            if(restoringTerrain || drawing || map!=active || tile<0 || tile>=6480) return -1;
+            IntPtr scratch=Marshal.AllocHGlobal(24);
+            restoringTerrain=true;
+            try
+            {
+                ProjectForTerrain(map,tile,scratch);
+                int x=Marshal.ReadInt16(scratch),y=Marshal.ReadInt16(scratch,2);
+                // A native tile draw needs neighboring coverage. This bounded
+                // 128px area is comfortably below the 110-entry cache capacity.
+                Rect region=new Rect { Left=Math.Max(0,x-32),Top=Math.Max(0,y),Right=Math.Min(width,x+96),Bottom=Math.Min(height,y+128) };
+                if(region.Right<=region.Left || region.Bottom<=region.Top) return -1;
+                Marshal.StructureToPtr(region,IntPtr.Add(scratch,8),false);
+                WindowedMapBridge.BeginMapDraw();
+                try { using(UseNativeMapBounds(map)) originalDraw(map,IntPtr.Add(scratch,8)); }
+                finally { WindowedMapBridge.EndMapDraw(); }
+                IntPtr world=Marshal.ReadIntPtr((IntPtr)0x7606f4),tiles=Marshal.ReadIntPtr(world,0x10);
+                int slot=Marshal.ReadByte(tiles,tile*40+0x13);
+                if(slot<110 && Marshal.ReadInt16(map,0x8a+slot*8)==tile) { terrainRestores++;return slot; }
+                terrainRestoreMisses++;return -1;
+            }
+            finally { restoringTerrain=false;Marshal.FreeHGlobal(scratch); }
+        }
+        internal static void ProjectForTerrain(IntPtr map,int tile,IntPtr xy)
+        {
+            // Native 0x54F680 writes vertical output first, horizontal second.
+            project(tile,IntPtr.Add(map,0x64),IntPtr.Add(xy,2),xy,1);
+        }
+
         static void OnDraw(IntPtr map, IntPtr dirty)
         {
             if (drawing) { originalDraw(map, dirty); return; }
             active = map;
             NativeMapInput.SetActiveMap(map);
-            Marshal.WriteInt32(map, 0x34, width); Marshal.WriteInt32(map, 0x38, height);
             Marshal.WriteInt32((IntPtr)0x75c048, width / 64);
             if (sizeDirty)
             {
@@ -161,9 +250,12 @@ namespace Imp2Net
             Rect full = new Rect { Right = width, Bottom = height };
             Marshal.StructureToPtr(full, rectangle, false);
             drawing = true;
+            long start=Stopwatch.GetTimestamp();
             WindowedMapBridge.BeginMapDraw();
-            try { originalDraw(map, rectangle); Frames++; }
-            finally { WindowedMapBridge.EndMapDraw(); drawing = false; }
+            try { using(UseNativeMapBounds(map)) originalDraw(map, rectangle); Frames++;WindowedMapBridge.MapFrameReady(); }
+            finally { WindowedMapBridge.EndMapDraw(); drawing = false;
+                drawTimes.Enqueue((Stopwatch.GetTimestamp()-start)*1000.0/Stopwatch.Frequency);
+                if(drawTimes.Count>600) drawTimes.Dequeue(); }
         }
 
         static void OnMapCopy(IntPtr source, IntPtr destination, IntPtr sourceRect, IntPtr destinationRect, int mode, IntPtr mask)
@@ -179,11 +271,60 @@ namespace Imp2Net
                 10 + dr.Left, 58 + dr.Top);
         }
 
+        // REA map-frame-body: 0x60A240 copies two masked 58x512 frame
+        // strips from world+0x314. Its right offset is permanently 518.
+        // Only replace the map Draw call; unrelated frame consumers retain it.
+        static void OnBorder(IntPtr self,int x,int y)
+        {
+            if(width==576 && height==512) { originalBorder(self,x,y); return; }
+            IntPtr resources=Marshal.ReadIntPtr((IntPtr)0x75a650);
+            IntPtr source=IntPtr.Add(Marshal.ReadIntPtr(resources,0x314),4);
+            IntPtr destination=IntPtr.Add(Marshal.ReadIntPtr((IntPtr)0x759f90),4);
+            IntPtr rects=Marshal.AllocHGlobal(32);
+            borderColor(253); foreColor(0);
+            try
+            {
+                for(int side=0;side<2;side++)
+                {
+                    int sx=side*58,dx=x+(side==0?0:width-58);
+                    BorderPiece(source,destination,rects,sx,0,dx,y,58);
+                    for(int offset=58;offset<height-64;offset+=64)
+                        BorderPiece(source,destination,rects,sx,128,dx,y+offset,Math.Min(64,height-64-offset));
+                    BorderPiece(source,destination,rects,sx,448,dx,y+height-64,64);
+                }
+            }
+            finally { borderColor(255); Marshal.FreeHGlobal(rects); }
+        }
+        static void BorderPiece(IntPtr source,IntPtr destination,IntPtr rects,int sx,int sy,int dx,int dy,int h)
+        {
+            Marshal.StructureToPtr(new Rect{Left=sx,Top=sy,Right=sx+58,Bottom=sy+h},rects,false);
+            Marshal.StructureToPtr(new Rect{Left=dx,Top=dy,Right=dx+58,Bottom=dy+h},IntPtr.Add(rects,16),false);
+            originalCopy(source,destination,rects,IntPtr.Add(rects,16),36,IntPtr.Zero);
+        }
+
         static void OnSelection(IntPtr map, int index)
         {
             WindowedMapBridge.BeginMapDraw();
-            try { selections[index](map); }
+            try { using(UseNativeMapBounds(map)) selections[index](map); }
             finally { WindowedMapBridge.EndMapDraw(); }
+        }
+        // Native root autoscroll (0x4B6C60) first checks modal/focus state,
+        // converts a temporary point, tests a 4px boundary, then throttles and
+        // invokes the original directional scroll. Adapt only that temporary
+        // point; keep the native guards, direction flags and camera behavior.
+        static void OnEdgePoint(IntPtr view,IntPtr point)
+        {
+            IntPtr target=Marshal.ReadIntPtr(Marshal.ReadIntPtr(view),0x148);
+            if(target!=edgePointTarget) {
+                originalEdgePoint=(ConvertEdgePoint)Marshal.GetDelegateForFunctionPointer(target,typeof(ConvertEdgePoint));
+                edgePointTarget=target;
+            }
+            originalEdgePoint(view,point);
+            if(!IsActive() || NativeMapInput.PhysicalCursor==null) return;
+            NativeMapInput.Point cursor=NativeMapInput.PhysicalCursor();
+            NativeMapInput.Point edge=NativeMapInput.EdgeScrollPoint(cursor.X,cursor.Y,
+                Marshal.ReadInt32(view,0x34),Marshal.ReadInt32(view,0x38));
+            Marshal.StructureToPtr(edge,point,false);
         }
         static void OnFocus(IntPtr animation) { ScopedIdle(animation, originalFocus); }
         static void OnTransparent(IntPtr animation) { ScopedIdle(animation, originalTransparent); }
@@ -191,7 +332,7 @@ namespace Imp2Net
         {
             bool mapOwned = active != IntPtr.Zero && Marshal.ReadIntPtr(animation, 4) == active;
             if (mapOwned) WindowedMapBridge.BeginMapDraw();
-            try { original(animation); }
+            try { if(mapOwned) { using(UseNativeMapBounds(active)) original(animation); } else original(animation); }
             finally { if (mapOwned) WindowedMapBridge.EndMapDraw(); }
         }
         static void OnMiniSize(IntPtr self, IntPtr value)
@@ -216,9 +357,11 @@ namespace Imp2Net
     {
         [DllImport("kernel32.dll", SetLastError=true)] static extern bool VirtualProtect(IntPtr p, UIntPtr n, uint flags, out uint old);
         [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr VirtualAlloc(IntPtr p, UIntPtr n, uint allocation, uint flags);
+        [DllImport("kernel32.dll", SetLastError=true)] static extern bool VirtualFree(IntPtr p,UIntPtr n,uint kind);
         [DllImport("kernel32.dll")] static extern IntPtr GetCurrentProcess();
         [DllImport("kernel32.dll")] static extern bool FlushInstructionCache(IntPtr process, IntPtr p, UIntPtr n);
         static readonly Dictionary<int, byte[]> originals = new Dictionary<int, byte[]>();
+        static readonly List<IntPtr> trampolines=new List<IntPtr>();
         public static void Require(int address, byte[] expected)
         {
             byte[] actual = new byte[expected.Length]; Marshal.Copy((IntPtr)address, actual, 0, actual.Length);
@@ -235,7 +378,7 @@ namespace Imp2Net
             uint old;
             if (!VirtualProtect((IntPtr)address,(UIntPtr)value.Length,0x40,out old)) throw new System.ComponentModel.Win32Exception();
             try { Marshal.Copy(value,0,(IntPtr)address,value.Length); }
-            finally { uint ignored; VirtualProtect((IntPtr)address,(UIntPtr)value.Length,old,out ignored); }
+            finally { uint ignored; if(!VirtualProtect((IntPtr)address,(UIntPtr)value.Length,old,out ignored)) throw new System.ComponentModel.Win32Exception(); }
             if (!FlushInstructionCache(GetCurrentProcess(),(IntPtr)address,(UIntPtr)value.Length)) throw new System.ComponentModel.Win32Exception();
         }
         public static void Pointer(int address, Delegate callback)
@@ -243,12 +386,15 @@ namespace Imp2Net
         public static IntPtr Trampoline(int address, byte[] displaced, Delegate callback)
         {
             Require(address,displaced);
-            IntPtr code=VirtualAlloc(IntPtr.Zero,(UIntPtr)(displaced.Length+5),0x3000,0x40);
+            IntPtr code=VirtualAlloc(IntPtr.Zero,(UIntPtr)(displaced.Length+5),0x3000,0x04);
             if (code==IntPtr.Zero) throw new System.ComponentModel.Win32Exception();
+            trampolines.Add(code);
             Marshal.Copy(displaced,0,code,displaced.Length);
             byte[] tail=Branch(0xe9,code.ToInt32()+displaced.Length,address+displaced.Length);
             Marshal.Copy(tail,0,IntPtr.Add(code,displaced.Length),5);
-            FlushInstructionCache(GetCurrentProcess(),code,(UIntPtr)(displaced.Length+5));
+            uint old;
+            if(!VirtualProtect(code,(UIntPtr)(displaced.Length+5),0x20,out old) || !FlushInstructionCache(GetCurrentProcess(),code,(UIntPtr)(displaced.Length+5)))
+                throw new System.ComponentModel.Win32Exception();
             byte[] redirect=new byte[displaced.Length]; for(int i=0;i<redirect.Length;i++)redirect[i]=0x90;
             Buffer.BlockCopy(Branch(0xe9,address,Marshal.GetFunctionPointerForDelegate(callback).ToInt32()),0,redirect,0,5);
             Write(address,redirect); return code;
@@ -257,6 +403,9 @@ namespace Imp2Net
         {
             var copy=new List<KeyValuePair<int,byte[]>>(originals);
             copy.Reverse(); foreach(var item in copy) Write(item.Key,item.Value);
+            originals.Clear();
+            foreach(IntPtr p in trampolines) if(!VirtualFree(p,UIntPtr.Zero,0x8000)) throw new System.ComponentModel.Win32Exception();
+            trampolines.Clear();
         }
     }
 }

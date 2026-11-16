@@ -68,6 +68,40 @@ class TestNativeMapInput
             catch(InvalidOperationException) { Check(!NativeMapInput.IsDispatching, "throwing handler restores override scope"); }
             NativeMapInput.Clear(map);
             Check(!NativeMapInput.HandleMouse(0x202,IntPtr.Zero,1500,900), "destroyed map no longer routes");
+            NativeMapInput.SetActiveMap(map);NativeMapInput.PhysicalCursor=null;
+            NativeMapInput.SetMapBounds(18,104,1518,922);
+            int proxyX,proxyY;
+            Check(NativeMapInput.TryGetProxyPoint(18,104,out proxyX,out proxyY) && proxyX==10 && proxyY==58,"idle poll reaches top-left map edge without a button");
+            Check(NativeMapInput.TryGetProxyPoint(1535,1025,out proxyX,out proxyY) && proxyX==585 && proxyY==569,"idle poll reaches bottom-right map edge without a button");
+            Check(NativeMapInput.TryGetProxyPoint(777,565,out proxyX,out proxyY) && proxyX>10 && proxyX<585 && proxyY>58 && proxyY<569,"idle interior stays away from native edges");
+            Check(!NativeMapInput.TryGetProxyPoint(1536,565,out proxyX,out proxyY),"idle sidebar never becomes a map edge");
+            Check(!NativeMapInput.TryGetProxyPoint(777,1026,out proxyX,out proxyY),"idle bottom controls never become a map edge");
+            Check(!NativeMapInput.TryGetProxyPoint(777,103,out proxyX,out proxyY),"idle top controls never become a map edge");
+            NativeMapInput.OriginalMouseDispatch=delegate(uint message,IntPtr wp,int x,int y) {
+                callDecode(map);
+                Check(decodedX==1400 && decodedY==800,"scaled UI origin is subtracted once from native map input");
+                Check(x>=10 && x<586 && y>=58 && y<570,"scaled map retains native dispatch proxy bounds");
+                return IntPtr.Zero;
+            };
+            Check(NativeMapInput.HandleMouse(0x200,IntPtr.Zero,1418,904),"HD map input after layout change");
+            Check(!NativeMapInput.HandleMouse(0x200,IntPtr.Zero,1536,904),"scaled sidebar boundary excludes map");
+            Check(!NativeMapInput.HandleMouse(0x200,IntPtr.Zero,1418,1026),"scaled footer boundary excludes map");
+            int cameraQueries=0;long beforeCameraQuery=NativeMapInput.DecoderOverrides;
+            NativeMapInput.ScreenToTileDelegate cameraDecoder=delegate(IntPtr self,IntPtr p,IntPtr c,IntPtr r,IntPtr s) {
+                Check(p==new IntPtr(0x75c010),"camera-origin query retains its fixed native point during mouse movement");
+                cameraQueries++;Marshal.WriteInt16(c,0);Marshal.WriteInt16(r,0);Marshal.WriteInt16(s,0);
+            };
+            typeof(NativeMapInput).GetField("original",BindingFlags.NonPublic|BindingFlags.Static).SetValue(null,cameraDecoder);
+            NativeMapInput.PhysicalCursor=delegate { return new NativeMapInput.Point {X=1535,Y=565}; };
+            NativeMapInput.OriginalMouseDispatch=delegate(uint message,IntPtr wp,int x,int y) {
+                Check(NativeMapInput.IsDispatching,"camera query exercised inside native mouse dispatch");
+                decode.Invoke(null,new object[]{map,new IntPtr(0x75c010),column,row,subregion});return IntPtr.Zero;
+            };
+            Check(NativeMapInput.HandleMouse(0x200,IntPtr.Zero,1535,565),"edge mouse move dispatched");
+            Check(cameraQueries==1,"camera origin reaches native decoder exactly once");
+            Check(NativeMapInput.DecoderOverrides==beforeCameraQuery,"camera origin is not counted as a pointer override");
+            typeof(NativeMapInput).GetField("original",BindingFlags.NonPublic|BindingFlags.Static).SetValue(null,decoder);
+            NativeMapInput.PhysicalCursor=null;
             Marshal.WriteInt32(map,0x703900);
             SetNativeDelegate("isShown","VisibilityFixture");
             SetNativeDelegate("originalFree","FreeFixture");

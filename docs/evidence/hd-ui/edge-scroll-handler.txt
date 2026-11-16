@@ -1,0 +1,113 @@
+Static disassembly from the installed Rizin executable, not REA Evidence.
+Target: ImpII.exe SHA256 998384BB696F02D37A6725CEA33F98BC2CA711B803C2638BED07A91D687CA7CC
+Native root edge handler: 0x4B6C60; replaced point-conversion call: 0x4B6CE8.
+The REA MCP Rizin provider was unavailable because its configured executable was not on PATH.
+
+            0x004b6c60      sub   esp, 0x08
+            0x004b6c63      push  ebx
+            0x004b6c64      push  ebp
+            0x004b6c65      push  esi
+            0x004b6c66      push  edi
+            0x004b6c67      mov   edi, ecx
+            0x004b6c69      call  0x4020d1
+            0x004b6c6e      mov   ebp, dword [esp+0x20]
+            0x004b6c72      test  eax, eax
+        ,=< 0x004b6c74      jnz   0x4b6d91
+        |   0x004b6c7a      mov   eax, dword [edi+0x48]
+        |   0x004b6c7d      test  eax, eax
+       ,==< 0x004b6c7f      jz    0x4b6d91
+       ||   0x004b6c85      mov   eax, dword [0x75a668]                ; [0x75a668:4]=0
+       ||   0x004b6c8a      mov   ax, word [eax+0x04]
+       ||   0x004b6c8e      cmp   ax, 0x7dc                            ; 2012
+      ,===< 0x004b6c92      jz    0x4b6cb0
+      |||   0x004b6c94      cmp   ax, 0x3b8                            ; 952
+     ,====< 0x004b6c98      jz    0x4b6cb0
+     ||||   0x004b6c9a      cmp   ax, 0xed8                            ; 3800
+    ,=====< 0x004b6c9e      jz    0x4b6cb0
+    |||||   0x004b6ca0      cmp   ax, 0xf3c                            ; 3900
+   ,======< 0x004b6ca4      jz    0x4b6cb0
+   ||||||   0x004b6ca6      cmp   ax, 0x3c0                            ; 960
+  ,=======< 0x004b6caa      jnz   0x4b6d91
+  |````---> 0x004b6cb0      mov   ecx, edi
+  |    ||   0x004b6cb2      call  0x4020d1
+  |    ||   0x004b6cb7      test  eax, eax
+  |   ,===< 0x004b6cb9      jnz   0x4b6d91
+  |   |||   0x004b6cbf      call  0x40377e
+  |   |||   0x004b6cc4      test  al, al
+  |  ,====< 0x004b6cc6      jz    0x4b6d91
+  |  ||||   0x004b6ccc      mov   ecx, dword [esp+0x1c]
+  |  ||||   0x004b6cd0      mov   edx, dword [0x75a60c]                ; [0x75a60c:4]=0
+  |  ||||   0x004b6cd6      mov   dword [esp+0x10], ecx
+  |  ||||   0x004b6cda      mov   dword [esp+0x14], ebp
+  |  ||||   0x004b6cde      mov   ecx, dword [edx+0x04]
+  |  ||||   0x004b6ce1      lea   edx, dword [esp+0x10]
+  |  ||||   0x004b6ce5      push  edx
+  |  ||||   0x004b6ce6      mov   eax, dword [ecx]
+  |  ||||   0x004b6ce8      call  dword [eax+0x148]                    ; 328
+  |  ||||   0x004b6cee      mov   eax, dword [esp+0x10]
+  |  ||||   0x004b6cf2      cmp   eax, 0xffffff38                      ; 4294967096
+  | ,=====< 0x004b6cf7      jle   0x4b6d91
+  | |||||   0x004b6cfd      mov   esi, dword [esp+0x14]
+  | |||||   0x004b6d01      cmp   esi, 0xffffff38                      ; 4294967096
+  |,======< 0x004b6d07      jle   0x4b6d91
+  |||||||   0x004b6d0d      mov   ecx, dword [0x75a60c]                ; [0x75a60c:4]=0
+  |||||||   0x004b6d13      mov   ecx, dword [ecx+0x04]
+  |||||||   0x004b6d16      mov   edx, dword [ecx+0x34]
+  |||||||   0x004b6d19      lea   ebx, dword [edx+0xc8]
+  |||||||   0x004b6d1f      cmp   eax, ebx
+  ========< 0x004b6d21      jnl   0x4b6d91
+  |||||||   0x004b6d23      mov   ecx, dword [ecx+0x38]
+  |||||||   0x004b6d26      lea   ebx, dword [ecx+0xc8]
+  |||||||   0x004b6d2c      cmp   esi, ebx
+  ========< 0x004b6d2e      jnl   0x4b6d91
+  |||||||   0x004b6d30      xor   bl, bl
+  |||||||   0x004b6d32      cmp   eax, 0x04                            ; 4
+  ========< 0x004b6d35      jnle  0x4b6d3b
+  |||||||   0x004b6d37      mov   bl, 0x08
+  ========< 0x004b6d39      jmp   0x4b6d44
+  --------> 0x004b6d3b      add   edx, 0xfffffffc                      ; 4294967292
+  |||||||   0x004b6d3e      cmp   eax, edx
+  ========< 0x004b6d40      jl    0x4b6d44
+  |||||||   0x004b6d42      mov   bl, 0x04
+  --------> 0x004b6d44      cmp   esi, 0x04                            ; 4
+  ========< 0x004b6d47      jnle  0x4b6d4e
+  |||||||   0x004b6d49      or    bl, 0x01
+  ========< 0x004b6d4c      jmp   0x4b6d58
+  --------> 0x004b6d4e      add   ecx, 0xfffffffc                      ; 4294967292
+  |||||||   0x004b6d51      cmp   esi, ecx
+  ========< 0x004b6d53      jl    0x4b6d58
+  |||||||   0x004b6d55      or    bl, 0x02
+  --------> 0x004b6d58      test  bl, bl
+  ========< 0x004b6d5a      jz    0x4b6d91
+  |||||||   0x004b6d5c      call  0x4093ea
+  |||||||   0x004b6d61      mov   ecx, dword [0x75a66c]                ; [0x75a66c:4]=0
+  |||||||   0x004b6d67      cmp   ecx, eax
+  ========< 0x004b6d69      jnle  0x4b6d72
+  |||||||   0x004b6d6b      add   ecx, 0x03
+  |||||||   0x004b6d6e      cmp   ecx, eax
+  ========< 0x004b6d70      jnl   0x4b6d91
+  --------> 0x004b6d72      mov   dword [0x75a66c], eax
+  |||||||   0x004b6d77      mov   ecx, dword [edi+0x48]
+  |||||||   0x004b6d7a      movsx ax, bl
+  |||||||   0x004b6d7e      mov   edx, dword [ecx]
+  |||||||   0x004b6d80      push  eax
+  |||||||   0x004b6d81      call  dword [edx+0x1d4]                    ; 468
+  |||||||   0x004b6d87      pop   edi
+  |||||||   0x004b6d88      pop   esi
+  |||||||   0x004b6d89      pop   ebp
+  |||||||   0x004b6d8a      pop   ebx
+  |||||||   0x004b6d8b      add   esp, 0x08
+  |||||||   0x004b6d8e      ret   0x0c
+  ```````-> 0x004b6d91      mov   ecx, dword [esp+0x24]
+            0x004b6d95      mov   edx, dword [esp+0x1c]
+            0x004b6d99      push  ecx
+            0x004b6d9a      push  ebp
+            0x004b6d9b      push  edx
+            0x004b6d9c      mov   ecx, edi
+            0x004b6d9e      call  0x404f52
+            0x004b6da3      pop   edi
+            0x004b6da4      pop   esi
+            0x004b6da5      pop   ebp
+            0x004b6da6      pop   ebx
+            0x004b6da7      add   esp, 0x08
+            0x004b6daa      invalid

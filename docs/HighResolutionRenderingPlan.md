@@ -1,5 +1,7 @@
 # Native-density world map and independently scaled UI
 
+**Current implementation:** [HD implementation and validation status](HdImplementation.md) tracks the November 16 opt-in code, new frame/cache evidence and acceptance gates. The investigation below is historical evidence and design rationale, not the current implementation status.
+
 Investigation date: November 12, 2026. **Investigation and implementation plan only; no game executable, DLL, configuration, or assets were changed, and no game process was launched.**
 
 ## Recommendation

@@ -62,7 +62,7 @@ internal static class TestNativeMapCache
         try
         {
             IntPtr validator = memory, allocator = IntPtr.Add(memory, 128), validateWrapper = IntPtr.Add(memory, 512), allocateWrapper = IntPtr.Add(memory, 640);
-            IntPtr[] consumerSites = { IntPtr.Add(memory, 256), IntPtr.Add(memory, 320), IntPtr.Add(memory, 384) };
+            IntPtr[] consumerSites = { IntPtr.Add(memory, 256), IntPtr.Add(memory, 320), IntPtr.Add(memory, 384), IntPtr.Add(memory, 448) };
             ValidateCall[] consumerCalls = new ValidateCall[consumerSites.Length];
             Marshal.WriteInt32(world, 0x10, tiles.ToInt32()); Marshal.WriteInt32(world, 0x100, world.ToInt32());
             Copy(validator, NativeMapCache.ValidateSignature);
@@ -133,6 +133,22 @@ internal static class TestNativeMapCache
                     Marshal.WriteByte(tiles, tile * 40 + 0x13, invalid);
                     Check(consumer(map, tiles, tile) == 1, "Selection/background rejects an invalid signed slot.");
                 }
+                int regenerated=0;
+                NativeMapCache.EnsureTerrain=delegate(IntPtr owner,int requested) {
+                    Check(owner==map && requested==tile,"Regeneration callback receives original EDI/AX");
+                    regenerated++;
+                    Marshal.WriteByte(tiles,tile*40+0x13,7);Marshal.WriteInt16(map,0x8a+7*8,(short)tile);
+                    return 7;
+                };
+                Marshal.WriteByte(tiles,tile*40+0x13,255);
+                Check(consumer(map,tiles,tile)==0 && regenerated==1,"Evicted selection tile is regenerated before native consumption");
+                Check(consumer(map,tiles,tile)==0 && regenerated==1,"Resident selection tile does not regenerate");
+                NativeMapCache.EnsureTerrain=delegate { return 110; };
+                Marshal.WriteByte(tiles,tile*40+0x13,255);
+                Check(consumer(map,tiles,tile)==1,"Out-of-range regeneration result fails closed");
+                NativeMapCache.EnsureTerrain=delegate { throw new InvalidOperationException("fixture"); };
+                Check(consumer(map,tiles,tile)==1,"Callback exceptions cannot unwind through native selection");
+                NativeMapCache.EnsureTerrain=null;
             }
             // Known native search results keep their original slot. Execute the
             // actual game's owner eviction, metadata, and backlink instructions.
@@ -202,6 +218,7 @@ internal static class TestNativeMapCache
         }
         finally
         {
+            NativeMapCache.EnsureTerrain=null;
             if (installed != null) installed.Dispose();
             foreach (IntPtr p in new IntPtr[] { memory, map, tiles, world }) VirtualFree(p, UIntPtr.Zero, 0x8000);
         }

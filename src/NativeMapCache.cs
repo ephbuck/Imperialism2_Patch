@@ -14,8 +14,9 @@ namespace Imp2Net.Graphics
         internal const int Capacity = 110;
         internal const int ValidateAddress = 0x0055D3A4;
         internal const int AllocateAddress = 0x0055D3E3;
-        internal static readonly int[] ConsumerAddresses = { 0x00559B0D, 0x0055B2A9, 0x0055B38D };
+        internal static readonly int[] ConsumerAddresses = { 0x00559B0D, 0x00559BF1, 0x0055B2A9, 0x0055B38D };
         internal static readonly byte[][] ConsumerSignatures = {
+            new byte[] { 0x66, 0x0F, 0xBE, 0x4C, 0xCE, 0x13 },
             new byte[] { 0x66, 0x0F, 0xBE, 0x4C, 0xCE, 0x13 },
             new byte[] { 0x66, 0x0F, 0xBE, 0x4C, 0xCA, 0x13 },
             new byte[] { 0x66, 0x0F, 0xBE, 0x4C, 0xCA, 0x13 }
@@ -28,6 +29,18 @@ namespace Imp2Net.Graphics
         private IntPtr[] consumers = new IntPtr[0];
         private bool[] consumerPatched = new bool[0];
         private static NativeMapCache installed;
+        // Selection/background readers need their tile regenerated after a
+        // streaming eviction. The map renderer supplies the bounded native draw.
+        public static Func<IntPtr,int,int> EnsureTerrain;
+        public static long RegenerationErrors { get; private set; }
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate int EnsureDelegate(IntPtr map,int tile);
+        private static readonly EnsureDelegate ensureCallback=Ensure;
+        static int Ensure(IntPtr map,int tile)
+        {
+            try { int slot=EnsureTerrain==null ? -1 : EnsureTerrain(map,tile); return slot>=0 && slot<Capacity ? slot : -1; }
+            catch { RegenerationErrors++;return -1; } // Never unwind through native selection.
+        }
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern IntPtr VirtualAlloc(IntPtr address, UIntPtr size, uint allocationType, uint protect);
@@ -70,7 +83,7 @@ namespace Imp2Net.Graphics
             RequireSignature(validate, ValidateSignature);
             RequireSignature(allocate, AllocateSignature);
             if (consumers.Length != 0 && consumers.Length != ConsumerSignatures.Length)
-                throw new ArgumentException("Provide all three native consumer sites.");
+                throw new ArgumentException("Provide all four native consumer sites.");
             for (int i = 0; i < consumers.Length; ++i) RequireSignature(consumers[i], ConsumerSignatures[i]);
             NativeMapCache hook = new NativeMapCache(validate, allocate);
             hook.consumers = (IntPtr[])consumers.Clone();
@@ -88,7 +101,7 @@ namespace Imp2Net.Graphics
                 for (int i = 0; i < consumers.Length; ++i)
                 {
                     IntPtr stub = IntPtr.Add(hook.executable, 256 + i * 128);
-                    byte[] code = BuildConsumerStub(stub.ToInt32(), ConsumerSignatures[i], IntPtr.Add(consumers[i], ConsumerSignatures[i].Length).ToInt32());
+                    byte[] code = BuildConsumerStub(stub.ToInt32(), ConsumerSignatures[i], IntPtr.Add(consumers[i], ConsumerSignatures[i].Length).ToInt32(),Marshal.GetFunctionPointerForDelegate(ensureCallback).ToInt32());
                     Marshal.Copy(code, 0, stub, code.Length);
                 }
                 uint previous;
@@ -164,7 +177,7 @@ namespace Imp2Net.Graphics
         // CX from a shared tile backlink. EDI is this map, AX is that tile ID.
         // Refuse both out-of-range slots and slots owned by another tile/view.
         // Native CMP CX,-1 immediately follows and skips unavailable terrain.
-        internal static byte[] BuildConsumerStub(int address, byte[] load, int continuation)
+        internal static byte[] BuildConsumerStub(int address, byte[] load, int continuation,int ensureAddress)
         {
             List<byte> b = new List<byte>(load);
             b.AddRange(new byte[] { 0x50, 0x52, 0x0F, 0xBF, 0xC1, 0x83, 0xF8, Capacity, 0x73, 0 });
@@ -173,7 +186,11 @@ namespace Imp2Net.Graphics
             b.AddRange(new byte[] { 0x66, 0x3B, 0x54, 0x24, 0x04, 0x74, 0 }); // cmp dx,saved ax
             int goodOwner = b.Count - 1;
             int invalid = b.Count;
-            b.AddRange(new byte[] { 0x66, 0xB9, 0xFF, 0xFF });
+            // Saved AX is the tile ID, EDI is the owning map. Keep the caller's
+            // volatile ECX/EDX/EAX intact except for the original CX result.
+            b.AddRange(new byte[] { 0x0F,0xB7,0x44,0x24,0x04,0x51,0x50,0x57,0xE8 });
+            b.AddRange(BitConverter.GetBytes(unchecked(ensureAddress-(address+b.Count+4))));
+            b.AddRange(new byte[] { 0x83,0xC4,0x08,0x8B,0xD0,0x59,0x66,0x8B,0xCA });
             int complete = b.Count;
             b.AddRange(new byte[] { 0x5A, 0x58 });
             b[badRange] = checked((byte)(invalid - badRange - 1));

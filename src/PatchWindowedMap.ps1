@@ -5,6 +5,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $bytes = [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $InputExe).Path)
 if ($bytes.Length -ne 4024320) { throw 'Expected GOG 1.03 executable.' }
+$inputHash=(Get-FileHash -LiteralPath $InputExe -Algorithm SHA256).Hash
+if($inputHash -notin @('998384BB696F02D37A6725CEA33F98BC2CA711B803C2638BED07A91D687CA7CC','BE5DA3D719702B2EF1450F17D038D4DB378FA40CD580E44D90E611C8B88E4FAE')) {
+    throw 'Unsupported executable digest. Revalidate the graphics profile before patching another build.'
+}
 function Patch([int]$offset, [byte[]]$original, [byte[]]$value) {
     $sameOriginal = $true; $samePatched = $true
     for ($i=0; $i -lt $value.Length; $i++) {

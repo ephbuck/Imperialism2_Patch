@@ -101,6 +101,8 @@ Log=0
 
 ## Building & Testing from Source
 
+An **opt-in HD map/UI implementation under gameplay validation** is also available. It expands native tile coverage, independently scales a compact sidebar, and centers complete top/bottom UI groups. See [HD build, configuration, rollback and validation status](docs/HdImplementation.md). The ordinary installation does not enable it automatically.
+
 No external SDKs or compilers are required—`build.ps1` uses the built-in 32-bit `.NET Framework 4.x` toolchain (`csc.exe` + `ilasm.exe`) included with Windows 10/11:
 
 ```powershell

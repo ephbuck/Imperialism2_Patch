@@ -17,7 +17,10 @@ Write-Host "=== 1. Compiling Imp2Net.dll (x86) ==="
 $imp2NetDll = Join-Path $objDir "Imp2Net.dll"
 & $csc /nologo /platform:x86 /target:library /optimize+ `
     /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll `
-    /out:$imp2NetDll (Join-Path $srcDir "Imp2Net.cs") (Join-Path $srcDir "WorldSync.cs")
+    /out:$imp2NetDll (Join-Path $srcDir "Imp2Net.cs") (Join-Path $srcDir "WorldSync.cs") `
+    (Join-Path $srcDir "MapViewportGeometry.cs") (Join-Path $srcDir "HdLayout.cs") `
+    (Join-Path $srcDir "NativeMapCache.cs") (Join-Path $srcDir "NativeMapInput.cs") `
+    (Join-Path $srcDir "NativeMapRenderer.cs") (Join-Path $srcDir "WindowedMapBridge.cs") (Join-Path $srcDir "WindowedMapStartup.cs")
 if ($LASTEXITCODE -ne 0) { throw "csc.exe failed with exit code $LASTEXITCODE" }
 
 Write-Host "=== 2. Assembling standalone 32-bit dplayx.dll (with embedded Imp2Net.dll) ==="
