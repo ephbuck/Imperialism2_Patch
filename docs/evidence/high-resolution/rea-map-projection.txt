@@ -1,0 +1,288 @@
+arch     x86
+cpu      N/A
+features N/A
+baddr    0x00400000
+binsz    0x003d6800
+bintype  pe
+bits     32
+class    PE32
+cmp.csum 0x003da673
+compiled Fri Jun  4 10:08:38 1999 UTC-7
+compiler Linker 05.10
+dbg_file N/A
+endian   LE
+hdr.csum 0x00000000
+guid     N/A
+intrp    N/A
+laddr    0x00000000
+lang     c
+machine  i386
+maxopsz  16
+minopsz  1
+os       windows
+overlay  false
+cc       cdecl
+pcalign  1
+rpath    N/A
+subsys   Windows GUI
+stripped false
+havecode true
+va       true
+static   false
+linenum  true
+lsyms    true
+canary   true
+pie      false
+relrocs  false
+nx       false
+     paddr     size      vaddr    vsize align perm name   type flags                                
+----------------------------------------------------------------------------------------------------
+0x00000400 0x2e7a00 0x00401000 0x2e8000   0x0 -r-x .text       CNT_CODE
+0x002e7e00  0x5a800 0x006e9000  0x5b000   0x0 -r-- .rdata      CNT_INITIALIZED_DATA
+0x00342600  0x15400 0x00744000  0x27000   0x0 -rw- .data       CNT_INITIALIZED_DATA
+0x00357a00   0x3e00 0x0076b000   0x4000   0x0 -rw- .idata      CNT_INITIALIZED_DATA
+0x0035b800  0x41000 0x0076f000  0x41000   0x0 -r-- .rsrc       CNT_INITIALIZED_DATA
+0x0039c800  0x3a000 0x007b0000  0x3a000   0x0 -r-- .reloc      CNT_INITIALIZED_DATA,MEM_DISCARDABLE
+            0x0054f680      movsx ecx, word [esp+0x04]
+            0x0054f685      mov   eax, 0x4bda12f7
+            0x0054f68a      push  ebx
+            0x0054f68b      imul  ecx
+            0x0054f68d      sar   edx, 0x05
+            0x0054f690      mov   eax, edx
+            0x0054f692      push  esi
+            0x0054f693      shr   eax, 0x1f
+            0x0054f696      add   edx, eax
+            0x0054f698      mov   eax, ecx
+            0x0054f69a      mov   ebx, edx
+            0x0054f69c      mov   ecx, 0x6c                            ; 'l' ; 108
+            0x0054f6a1      cdq
+            0x0054f6a2      idiv  ecx
+            0x0054f6a4      mov   ecx, dword [esp+0x10]
+            0x0054f6a8      push  edi
+            0x0054f6a9      mov   edi, dword [esp+0x18]
+            0x0054f6ad      mov   eax, edx
+            0x0054f6af      mov   edx, ebx
+            0x0054f6b1      shl   edx, 0x06
+            0x0054f6b4      sub   dx, word [ecx+0x04]
+            0x0054f6b8      shl   eax, 0x06
+            0x0054f6bb      mov   word [edi], dx
+            0x0054f6be      sub   ax, word [ecx]
+            0x0054f6c1      mov   ecx, dword [esp+0x1c]
+            0x0054f6c5      test  bl, 0x01                             ; 1
+            0x0054f6c8      mov   word [ecx], ax
+        ,=< 0x0054f6cb      jz    0x54f6e1
+        |   0x0054f6cd      add   eax, 0x20                            ; 32
+        |   0x0054f6d0      cmp   ax, 0x1ae0
+        |   0x0054f6d4      mov   word [ecx], ax
+       ,==< 0x0054f6d7      jl    0x54f6e1
+       ||   0x0054f6d9      add   eax, 0xffffe500
+       ||   0x0054f6de      mov   word [ecx], ax
+       ``-> 0x0054f6e1      cmp   word [ecx], 0xffc0
+        ,=< 0x0054f6e5      jnl   0x54f6f2
+       .--> 0x0054f6e7      add   word [ecx], 0x1b00                   ; [0x1b00:2]=0xffff
+       :|   0x0054f6ec      cmp   word [ecx], 0xffc0
+       `==< 0x0054f6f0      jl    0x54f6e7
+        `-> 0x0054f6f2      movsx eax, word [edi]
+            0x0054f6f5      movsx esi, word [esp+0x20]
+            0x0054f6fa      cdq
+            0x0054f6fb      idiv  esi
+            0x0054f6fd      mov   word [edi], ax
+            0x0054f700      pop   edi
+            0x0054f701      movsx eax, word [ecx]
+            0x0054f704      cdq
+            0x0054f705      idiv  esi
+            0x0054f707      pop   esi
+            0x0054f708      pop   ebx
+            0x0054f709      mov   word [ecx], ax
+            0x0054f70c      ret
+            0x0054f70d      nop
+            0x0054f70e      nop
+            0x0054f70f      nop
+            0x0054f710      int3
+            0x0054f711      int3
+            0x0054f712      int3
+            0x0054f713      int3
+            0x0054f714      int3
+            0x0054f715      int3
+            0x0054f716      int3
+            0x0054f717      int3
+            0x0054f718      int3
+            0x0054f719      int3
+            0x0054f71a      int3
+            0x0054f71b      int3
+            0x0054f71c      int3
+            0x0054f71d      int3
+            0x0054f71e      int3
+            0x0054f71f      int3
+            0x0054f720      int3
+            0x0054f721      int3
+            0x0054f722      int3
+            0x0054f723      int3
+            0x0054f724      int3
+            0x0054f725      int3
+            0x0054f726      int3
+            0x0054f727      int3
+            0x0054f728      int3
+            0x0054f729      int3
+            0x0054f72a      int3
+            0x0054f72b      int3
+            0x0054f72c      int3
+            0x0054f72d      int3
+            0x0055a5a0      push  ebx
+            0x0055a5a1      push  esi
+            0x0055a5a2      push  edi
+            0x0055a5a3      mov   edi, dword [esp+0x10]
+            0x0055a5a7      mov   esi, ecx
+            0x0055a5a9      mov   eax, dword [edi+0x04]
+            0x0055a5ac      add   eax, dword [esi+0x68]
+            0x0055a5af      mov   dword [esp+0x10], eax
+            0x0055a5b3      fild  dword [esp+0x10]
+            0x0055a5b7      fmul  qword [0x75c028]
+            0x0055a5bd      call  0x6816b0
+            0x0055a5c2      mov   ebx, dword [esp+0x18]
+            0x0055a5c6      test  al, 0x01                             ; 1
+            0x0055a5c8      mov   word [ebx], ax
+            0x0055a5cb      mov   ecx, dword [edi]
+        ,=< 0x0055a5cd      jz    0x55a5ec
+        |   0x0055a5cf      mov   edx, dword [esi+0x64]
+        |   0x0055a5d2      lea   eax, dword [ecx+edx*1+0x20]
+        |   0x0055a5d6      mov   dword [esp+0x10], eax
+        |   0x0055a5da      fild  dword [esp+0x10]
+        |   0x0055a5de      fmul  qword [0x75c000]
+        |   0x0055a5e4      call  0x6816b0
+        |   0x0055a5e9      dec   eax
+       ,==< 0x0055a5ea      jmp   0x55a602
+       |`-> 0x0055a5ec      add   ecx, dword [esi+0x64]
+       |    0x0055a5ef      mov   dword [esp+0x10], ecx
+       |    0x0055a5f3      fild  dword [esp+0x10]
+       |    0x0055a5f7      fmul  qword [0x75c000]
+       |    0x0055a5fd      call  0x6816b0
+       `--> 0x0055a602      mov   ecx, dword [esp+0x14]
+            0x0055a606      push  ebx
+            0x0055a607      push  ecx
+            0x0055a608      mov   word [ecx], ax
+            0x0055a60b      call  0x408279
+            0x0055a610      mov   eax, dword [edi+0x04]
+            0x0055a613      mov   edx, dword [esi+0x68]
+            0x0055a616      add   eax, edx
+            0x0055a618      add   esp, 0x08
+            0x0055a61b      cdq
+            0x0055a61c      xor   eax, edx
+            0x0055a61e      sub   eax, edx
+            0x0055a620      and   eax, 0x3f                            ; 63
+            0x0055a623      xor   eax, edx
+            0x0055a625      mov   ecx, eax
+            0x0055a627      mov   al, byte [ebx]
+            0x0055a629      sub   ecx, edx
+            0x0055a62b      test  al, 0x01                             ; 1
+        ,=< 0x0055a62d      jz    0x55a647
+        |   0x0055a62f      mov   edx, dword [edi]
+        |   0x0055a631      mov   eax, dword [esi+0x64]
+        |   0x0055a634      lea   eax, dword [edx+eax*1+0x20]
+        |   0x0055a638      cdq
+        |   0x0055a639      xor   eax, edx
+        |   0x0055a63b      sub   eax, edx
+        |   0x0055a63d      and   eax, 0x3f                            ; 63
+        |   0x0055a640      xor   eax, edx
+        |   0x0055a642      sub   eax, edx
+        |   0x0055a644      dec   eax
+       ,==< 0x0055a645      jmp   0x55a65a
+       |`-> 0x0055a647      mov   eax, dword [edi]
+       |    0x0055a649      mov   ebx, dword [esi+0x64]
+       |    0x0055a64c      add   eax, ebx
+       |    0x0055a64e      cdq
+       |    0x0055a64f      xor   eax, edx
+       |    0x0055a651      sub   eax, edx
+       |    0x0055a653      and   eax, 0x3f                            ; 63
+       |    0x0055a656      xor   eax, edx
+       |    0x0055a658      sub   eax, edx
+       `--> 0x0055a65a      cmp   ax, 0x14                             ; 20
+        ,=< 0x0055a65e      jnl   0x55a68a
+        |   0x0055a660      cmp   cx, 0x14                             ; 20
+       ,==< 0x0055a664      jl    0x55a67b
+       ||   0x0055a666      cmp   cx, 0x2c                             ; ',' ; 44
+      ,===< 0x0055a66a      jnle  0x55a67b
+      |||   0x0055a66c      mov   ecx, dword [esp+0x1c]
+      |||   0x0055a670      mov   word [ecx], 0x01
+      |||   0x0055a675      pop   edi
+      |||   0x0055a676      pop   esi
+      |||   0x0055a677      pop   ebx
+      |||   0x0055a678      ret   0x10
+      ``--> 0x0055a67b      mov   edx, dword [esp+0x1c]
+        |   0x0055a67f      mov   word [edx], 0x02
+        |   0x0055a684      pop   edi
+        |   0x0055a685      pop   esi
+        |   0x0055a686      pop   ebx
+        |   0x0055a687      ret   0x10
+        `-> 0x0055a68a      xor   eax, eax
+            0x0055a68c      cmp   cx, 0x20                             ; 32
+            0x0055a690      mov   ecx, dword [esp+0x1c]
+            0x0055a694      pop   edi
+            0x0055a695      setnl al
+            0x0055a698      add   eax, 0x03
+            0x0055a69b      pop   esi
+            0x0055a69c      mov   word [ecx], ax
+            0x0055a69f      pop   ebx
+            0x0055a6a0      ret   0x10
+            0x0055a6a3      nop
+            0x0055a6a4      nop
+            0x0055a6a5      nop
+            0x0055a6a6      nop
+            0x00550340      mov   ecx, dword [esp+0x04]
+            0x00550344      mov   ax, word [ecx]
+            0x00550347      cmp   ax, 0x6c                             ; 'l' ; 108
+        ,=< 0x0055034b      jl    0x550352
+        |   0x0055034d      add   eax, 0xffffff94                      ; 4294967188
+       ,==< 0x00550350      jmp   0x55035a
+       |`-> 0x00550352      test  ax, ax
+       |,=< 0x00550355      jnl   0x55035d
+       ||   0x00550357      add   eax, 0x6c                            ; 108
+       `--> 0x0055035a      mov   word [ecx], ax
+        `-> 0x0055035d      mov   ecx, dword [esp+0x08]
+            0x00550361      mov   ax, word [ecx]
+            0x00550364      test  ax, ax
+        ,=< 0x00550367      jnl   0x55036f
+        |   0x00550369      mov   word [ecx], 0x00
+        |   0x0055036e      ret
+        `-> 0x0055036f      cmp   ax, 0x3c                             ; '<' ; 60
+        ,=< 0x00550373      jl    0x55037a
+        |   0x00550375      mov   word [ecx], 0x3b                     ; ';'
+        |                                                              ; [0x3b:2]=0xffff ; 59
+        `-> 0x0055037a      ret
+            0x0055037b      nop
+            0x0055037c      nop
+            0x0055037d      nop
+            0x0055037e      nop
+            0x0055037f      nop
+            0x00550380      int3
+            0x00550381      int3
+            0x00550382      int3
+            0x00550383      int3
+            0x00550384      int3
+            0x00550385      int3
+            0x00550386      int3
+            0x00423bd0      mov   eax, dword [esp+0x04]
+            0x00423bd4      mov   edx, dword [ecx+0x28]
+            0x00423bd7      push  esi
+            0x00423bd8      mov   esi, dword [eax+0x04]
+            0x00423bdb      sub   esi, edx
+            0x00423bdd      mov   edx, dword [eax]
+            0x00423bdf      mov   dword [eax+0x04], esi
+            0x00423be2      mov   ecx, dword [ecx+0x24]
+            0x00423be5      sub   edx, ecx
+            0x00423be7      pop   esi
+            0x00423be8      mov   dword [eax], edx
+            0x00423bea      ret   0x04
+            0x00423bed      nop
+            0x00423bee      nop
+            0x00423bef      nop
+            0x00423bf0      int3
+            0x00423bf1      int3
+            0x00423bf2      int3
+            0x00423bf3      int3
+            0x00423bf4      int3
+            0x00423bf5      int3
+            0x00423bf6      int3
+            0x00423bf7      int3
+            0x00423bf8      int3
+
