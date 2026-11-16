@@ -1,0 +1,674 @@
+            0x00532ea0      mov   eax, dword [0x75bcd8]                ; [0x75bcd8:4]=0
+            0x00532ea5      sub   esp, 0x10
+            0x00532ea8      test  eax, eax
+        ,=< 0x00532eaa      jnz   0x532edf
+        |   0x00532eac      mov   eax, dword [0x75bc88]                ; [0x75bc88:4]=0
+        |   0x00532eb1      mov   edx, 0xffffffc0                      ; 4294967232
+        |   0x00532eb6      mov   dword [esp+0x08], eax
+        |   0x00532eba      mov   eax, dword [0x75bc8c]                ; [0x75bc8c:4]=0
+        |   0x00532ebf      add   eax, 0x40                            ; 64
+        |   0x00532ec2      mov   dword [esp], edx
+        |   0x00532ec6      mov   dword [esp+0x0c], eax
+        |   0x00532eca      lea   eax, dword [esp]
+        |   0x00532ece      mov   dword [esp+0x04], edx
+        |   0x00532ed2      mov   edx, dword [ecx]
+        |   0x00532ed4      push  eax
+        |   0x00532ed5      push  0x10                                 ; 16
+        |   0x00532ed7      push  0x75bcdc
+        |   0x00532edc      call  dword [edx+0x2c]                     ; 44
+        `-> 0x00532edf      mov   ecx, dword [0x75bcdc]                ; [0x75bcdc:4]=0
+            0x00532ee5      mov   dword [0x75bcd8], ecx
+            0x00532eeb      add   esp, 0x10
+            0x00532eee      ret
+            0x00532eef      nop
+            0x00532ef0      int3
+            0x00532ef1      int3
+            0x00532ef2      int3
+            0x00532ef3      int3
+            0x00532ef4      int3
+            0x00532ef5      int3
+            0x00532ef6      int3
+            0x00532ef7      int3
+            0x00532ef8      int3
+            0x00532ef9      int3
+            0x00532efa      int3
+            0x00532efb      int3
+            0x00532efc      int3
+            0x00532efd      int3
+            0x00532efe      int3
+            0x00532eff      int3
+            0x00532f00      int3
+            0x00532f01      int3
+            0x00532f02      int3
+            0x00532f03      int3
+            0x00532f04      int3
+            0x00532f05      int3
+            0x00532f06      int3
+            0x00532f07      int3
+            0x00532f08      int3
+            0x00532f09      int3
+            0x00532f0a      int3
+            0x00532f0b      int3
+            0x00532f0c      int3
+            0x00532f0d      int3
+            0x00532f0e      int3
+            0x00532f0f      int3
+            0x00532f10      push  esi
+            0x00532f11      mov   esi, ecx
+            0x00532f13      cmp   word [esi+0x0a], 0x00
+        ,=< 0x00532f18      jz    0x532f29
+        |   0x00532f1a      mov   ecx, dword [esi+0x04]
+        |   0x00532f1d      test  ecx, ecx
+        |   0x00532f1f      invalid
+            0x004942d0      push  ebx
+            0x004942d1      push  esi
+            0x004942d2      mov   esi, ecx
+            0x004942d4      push  edi
+            0x004942d5      cmp   dword [esi+0xcc], 0x320
+        ,=< 0x004942df      jl    0x4942fa
+        |   0x004942e1      cmp   dword [esi+0xd0], 0x258
+       ,==< 0x004942eb      jl    0x4942fa
+       ||   0x004942ed      cmp   dword [esi+0xd4], 0x10
+      ,===< 0x004942f4      jl    0x4942fa
+      |||   0x004942f6      xor   al, al
+     ,====< 0x004942f8      jmp   0x4942fc
+     |```-> 0x004942fa      mov   al, 0x01
+     `----> 0x004942fc      mov   edi, dword [esp+0x10]
+            0x00494300      test  edi, edi
+        ,=< 0x00494302      jnz   0x49430c
+        |   0x00494304      test  al, al
+       ,==< 0x00494306      jnz   0x49430c
+       ||   0x00494308      xor   bl, bl
+      ,===< 0x0049430a      jmp   0x49430e
+      |``-> 0x0049430c      mov   bl, 0x01
+      `---> 0x0049430e      cmp   byte [esi+0xc8], bl
+        ,=< 0x00494314      jz    0x4943d8
+        |   0x0049431a      test  bl, bl
+        |   0x0049431c      mov   byte [esi+0xc8], bl
+       ,==< 0x00494322      jnz   0x49432b
+       ||   0x00494324      call  0x403e22
+      ,===< 0x00494329      jmp   0x4943a8
+      |`--> 0x0049432b      call  0x6adc30
+      | |   0x00494330      test  eax, eax
+      |,==< 0x00494332      jz    0x494342
+      |||   0x00494334      call  0x6adc30
+      |||   0x00494339      mov   edx, dword [eax]
+      |||   0x0049433b      mov   ecx, eax
+      |||   0x0049433d      call  dword [edx+0x7c]                     ; 124
+     ,====< 0x00494340      jmp   0x494344
+     ||`--> 0x00494342      xor   eax, eax
+     `----> 0x00494344      mov   eax, dword [eax+0x1c]
+      | |   0x00494347      push  eax
+      | |   0x00494348      call  0x4062c1
+      | |   0x0049434d      mov   dl, byte [0x759880]                  ; [0x759880:1]=0
+      | |   0x00494353      add   esp, 0x04
+      | |   0x00494356      xor   ecx, ecx
+      | |   0x00494358      test  dl, dl
+      | |   0x0049435a      setz  cl
+      | |   0x0049435d      push  ecx
+      | |   0x0049435e      mov   ecx, dword [0x7595b8]                ; [0x7595b8:4]=0
+      | |   0x00494364      push  0x10                                 ; 16
+      | |   0x00494366      push  0x258                                ; 600
+      | |   0x0049436b      push  0x320                                ; 800
+      | |   0x00494370      call  0x403e3b
+      | |   0x00494375      xor   ecx, ecx
+      | |   0x00494377      test  eax, eax
+      | |   0x00494379      setz  cl
+      | |   0x0049437c      test  cl, cl
+      | |   0x0049437e      mov   byte [esi+0xc8], cl
+      |,==< 0x00494384      jz    0x4943a8
+      |||   0x00494386      call  0x6adc30
+      |||   0x0049438b      test  eax, eax
+     ,====< 0x0049438d      jz    0x49439d
+     ||||   0x0049438f      call  0x6adc30
+     ||||   0x00494394      mov   edx, dword [eax]
+     ||||   0x00494396      mov   ecx, eax
+     ||||   0x00494398      call  dword [edx+0x7c]                     ; 124
+    ,=====< 0x0049439b      jmp   0x49439f
+    |`----> 0x0049439d      xor   eax, eax
+    `-----> 0x0049439f      push  0x00
+      |||   0x004943a1      mov   ecx, eax
+      |||   0x004943a3      call  0x407577
+      ``--> 0x004943a8      invalid
+        |   0x004943a9      sahf
+        |   0x004943aa      invalid
+        |   0x004943ab      invalid
+            0x0048ad90      sub   esp, 0x80
+            0x0048ad96      push  ebx
+            0x0048ad97      push  ebp
+            0x0048ad98      push  esi
+            0x0048ad99      mov   ebp, ecx
+            0x0048ad9b      push  edi
+            0x0048ad9c      mov   ecx, 0x1f                            ; 31
+            0x0048ada1      xor   eax, eax
+            0x0048ada3      lea   edi, dword [esp+0x14]
+            0x0048ada7      rep   stosd
+            0x0048ada9      mov   eax, dword [ebp+0x08]
+            0x0048adac      mov   byte [esp+0x13], 0x00
+            0x0048adb1      test  eax, eax
+            0x0048adb3      mov   dword [esp+0x14], 0x7c               ; '|'
+                                                                       ; [0x7c:4]=-1 ; 124
+        ,=< 0x0048adbb      jnz   0x48add4
+        |   0x0048adbd      push  str.Invalid_Pointer_:_NULL           ; 0x74715c ; "Invalid Pointer : NULL"
+        |   0x0048adc2      push  0xe3                                 ; 227
+        |   0x0048adc7      push  str.D:_Epsilon_DDObject.cpp          ; 0x747124 ; "D:\Epsilon\DDObject.cpp"
+        |   0x0048adcc      call  0x4068b1
+        |   0x0048add1      add   esp, 0x0c
+        `-> 0x0048add4      mov   edi, dword [esp+0x9c]
+            0x0048addb      mov   ebx, dword [esp+0x98]
+            0x0048ade2      mov   eax, dword [esp+0x94]
+            0x0048ade9      mov   dword [esp+0x18], 0x06
+            0x0048adf1      test  edi, edi
+            0x0048adf3      mov   dword [esp+0x1c], ebx
+            0x0048adf7      mov   dword [esp+0x20], eax
+            0x0048adfb      mov   dword [esp+0x5c], 0x20               ; [0x20:4]=-1 ; 32
+        ,=< 0x0048ae03      jz    0x48ae11
+        |   0x0048ae05      mov   dword [esp+0x18], 0x1006             ; [0x1006:4]=-1
+        |   0x0048ae0d      mov   dword [esp+0x68], edi
+        `-> 0x0048ae11      mov   eax, dword [ebp+0x08]
+            0x0048ae14      lea   edx, dword [esp+0x13]
+            0x0048ae18      push  0x402202
+            0x0048ae1d      push  edx
+            0x0048ae1e      mov   ecx, dword [eax]
+            0x0048ae20      lea   edx, dword [esp+0x1c]
+            0x0048ae24      push  edx
+            0x0048ae25      push  0x01                                 ; 1
+            0x0048ae27      push  eax
+            0x0048ae28      call  dword [ecx+0x20]                     ; 32
+            0x0048ae2b      mov   esi, eax
+            0x0048ae2d      test  esi, esi
+        ,=< 0x0048ae2f      jz    0x48ae44
+        |   0x0048ae31      push  esi
+        |   0x0048ae32      push  0xf8                                 ; 248
+        |   0x0048ae37      push  str.D:_Epsilon_DDObject.cpp          ; 0x747124 ; "D:\Epsilon\DDObject.cpp"
+        |   0x0048ae3c      call  0x406b5e
+        |   0x0048ae41      add   esp, 0x0c
+        `-> 0x0048ae44      mov   al, byte [esp+0x13]
+            0x0048ae48      test  al, al
+        ,=< 0x0048ae4a      jz    0x48aed3
+        |   0x0048ae50      mov   al, byte [esp+0xa0]
+        |   0x0048ae57      test  al, al
+        |   0x0048ae59      mov   eax, dword [ebp+0x08]
+        |   0x0048ae5c      mov   ecx, dword [eax]
+       ,==< 0x0048ae5e      jz    0x48aea6
+       ||   0x0048ae60      mov   edx, dword [ebp+0x04]
+       ||   0x0048ae63      push  0x13                                 ; 19
+       ||   0x0048ae65      push  edx
+       ||   0x0048ae66      push  eax
+       ||   0x0048ae67      call  dword [ecx+0x50]                     ; 80
+       ||   0x0048ae6a      test  eax, eax
+      ,===< 0x0048ae6c      jz    0x48ae81
+      |||   0x0048ae6e      push  eax
+      |||   0x0048ae6f      push  0x106                                ; 262
+      |||   0x0048ae74      push  str.D:_Epsilon_DDObject.cpp          ; 0x747124 ; "D:\Epsilon\DDObject.cpp"
+      |||   0x0048ae79      call  0x406b5e
+      |||   0x0048ae7e      add   esp, 0x0c
+      `---> 0x0048ae81      mov   eax, dword [ebp+0x08]
+       ||   0x0048ae84      mov   edx, dword [esp+0x94]
+       ||   0x0048ae8b      push  0x00
+       ||   0x0048ae8d      push  0x00
+       ||   0x0048ae8f      mov   ecx, dword [eax]
+       ||   0x0048ae91      push  edi
+       ||   0x0048ae92      push  ebx
+       ||   0x0048ae93      push  edx
+       ||   0x0048ae94      push  eax
+       ||   0x0048ae95      call  dword [ecx+0x54]                     ; 84
+       ||   0x0048ae98      mov   esi, eax
+       ||   0x0048ae9a      test  esi, esi
+      ,===< 0x0048ae9c      jz    0x48aec9
+      |||   0x0048ae9e      push  esi
+      |||   0x0048ae9f      push  0x10a                                ; 266
+     ,====< 0x0048aea4      jmp   0x48aebc
+     ||`--> 0x0048aea6      mov   edx, dword [ebp+0x04]
+     || |   0x0048aea9      push  0x08                                 ; 8
+     || |   0x0048aeab      push  edx
+     || |   0x0048aeac      push  eax
+     || |   0x0048aead      call  dword [ecx+0x50]                     ; 80
+     || |   0x0048aeb0      mov   esi, eax
+     || |   0x0048aeb2      test  esi, esi
+     ||,==< 0x0048aeb4      jz    0x48aec9
+     ||||   0x0048aeb6      push  esi
+     ||||   0x0048aeb7      push  0x110                                ; 272
+     `----> 0x0048aebc      push  str.D:_Epsilon_DDObject.cpp          ; 0x747124 ; "D:\Epsilon\DDObject.cpp"
+      |||   0x0048aec1      call  0x406b5e
+      |||   0x0048aec6      add   esp, 0x0c
+      ``--> 0x0048aec9      mov   al, byte [esp+0xa0]
+        |   0x0048aed0      mov   byte [ebp+0x0c], al
+        `-> 0x0048aed3      mov   eax, esi
+            0x0048aed5      pop   edi
+            0x0048aed6      pop   esi
+            0x0048aed7      pop   ebp
+            0x0048aed8      pop   ebx
+            0x0048aed9      add   esp, 0x80
+            0x0048aedf      ret   0x10
+            0x0048aee2      nop
+            0x0048aee3      nop
+            0x0048aee4      nop
+            0x0048aee5      nop
+            0x0048aee6      nop
+            0x0048aee7      nop
+            0x0048aee8      nop
+            0x0048aee9      nop
+            0x0048aeea      nop
+            0x0048aeeb      nop
+            0x0048aeec      nop
+            0x0048aeed      nop
+            0x0048aeee      nop
+            0x0048aeef      nop
+            0x0048aef0      int3
+            0x0048aef1      int3
+            0x0048aef2      int3
+            0x0048aef3      int3
+            0x0048aef4      int3
+            0x0048aef5      int3
+            0x0048aef6      int3
+            0x0048aef7      int3
+            0x0048aef8      int3
+            0x0048aef9      int3
+            0x0048aefa      int3
+            0x0048aefb      int3
+            0x0048aefc      int3
+            0x0048aefd      int3
+            0x0048aefe      int3
+            0x0048aeff      int3
+            0x0048af00      int3
+            0x0048af01      int3
+            0x0048af02      int3
+            0x0048af03      int3
+            0x0048af04      int3
+            0x0048af05      int3
+            0x0048af06      int3
+            0x0048af07      int3
+            0x0048af08      int3
+            0x0048af09      int3
+            0x0048af0a      int3
+            0x0048af0b      int3
+            0x0048af0c      int3
+            0x0048af0d      int3
+            0x0048af0e      int3
+            0x0048af0f      int3
+            0x0048af10      int3
+            0x0048af11      int3
+            0x0048af12      int3
+            0x0048af13      int3
+            0x0048af14      int3
+            0x0048af15      int3
+            0x0048af16      int3
+            0x0048af17      int3
+            0x0048af18      int3
+            0x0048af19      int3
+            0x0048af1a      int3
+            0x0048af1b      int3
+            0x0048af1c      int3
+            0x0048af1d      int3
+            0x0048af1e      int3
+            0x0048af1f      int3
+            0x0048af20      int3
+            0x0048af21      int3
+            0x0048af22      int3
+            0x0048af23      int3
+            0x0048af24      int3
+            0x0048af25      int3
+            0x0048af26      int3
+            0x0048af27      int3
+            0x0048af28      int3
+            0x0048af29      int3
+            0x0048af2a      int3
+            0x0048af2b      int3
+            0x0048af2c      int3
+            0x0048af2d      int3
+            0x0048af2e      int3
+            0x0048af2f      int3
+            0x0048af30      int3
+            0x0048af31      int3
+            0x0048af32      int3
+            0x0048af33      int3
+            0x0048af34      int3
+            0x0048af35      int3
+            0x0048af36      int3
+            0x0048af37      int3
+            0x0048af38      int3
+            0x0048af39      int3
+            0x0048af3a      int3
+            0x0048af3b      int3
+            0x0048af3c      int3
+            0x0048af3d      int3
+            0x0048af3e      int3
+            0x0048af3f      int3
+            0x0048af40      int3
+            0x0048af41      int3
+            0x0048af42      int3
+            0x0048af43      int3
+            0x0048af44      int3
+            0x0048af45      int3
+            0x0048af46      int3
+            0x0048af47      int3
+            0x0048af48      int3
+            0x0048af49      int3
+            0x0048af4a      int3
+            0x0048af4b      int3
+            0x0048af4c      int3
+            0x0048af4d      int3
+            0x0048af4e      int3
+            0x0048af4f      int3
+            0x0048af50      mov   al, byte [esp+0x04]
+            0x0048af54      push  esi
+            0x0048af55      test  al, al
+            0x0048af57      mov   edx, 0x08
+        ,=< 0x0048af5c      jnz   0x48af63
+        |   0x0048af5e      mov   edx, 0x13                            ; 19
+        `-> 0x0048af63      mov   eax, dword [ecx+0x08]
+            0x0048af66      mov   ecx, dword [ecx+0x04]
+            0x0048af69      push  edx
+            0x0048af6a      push  ecx
+            0x0048af6b      mov   esi, dword [eax]
+            0x0048af6d      push  eax
+            0x0048af6e      call  dword [esi+0x50]                     ; 80
+            0x0048af71      mov   esi, eax
+            0x0048af73      test  esi, esi
+        ,=< 0x0048af75      jz    0x48af8a
+        |   0x0048af77      push  esi
+        |   0x0048af78      push  0x134                                ; 308
+        |   0x0048af7d      push  str.D:_Epsilon_DDObject.cpp          ; 0x747124 ; "D:\Epsilon\DDObject.cpp"
+        |   0x0048af82      invalid
+        |   0x0048af83      xlat
+            0x004aadb0      mov   eax, dword [0x75a050]                ; [0x75a050:4]=0
+            0x004aadb5      xor   ecx, ecx
+            0x004aadb7      cmp   eax, ecx
+        ,=< 0x004aadb9      jnz   0x4aadf0
+        |   0x004aadbb      push  esi
+        |   0x004aadbc      mov   esi, 0x258                           ; 600
+        |   0x004aadc1      xor   eax, eax
+        |   0x004aadc3      mov   edx, 0x320                           ; 800
+        |   0x004aadc8      mov   dword [0x759f58], esi
+        |   0x004aadce      mov   dword [0x75a050], 0x759f48           ; [0x759f48:4]=0
+        |   0x004aadd8      mov   dword [0x759f48], ecx
+        |   0x004aadde      mov   dword [0x759f4c], eax
+        |   0x004aade3      mov   dword [0x759f50], ecx
+        |   0x004aade9      mov   dword [0x759f54], edx
+        |   0x004aadef      pop   esi
+        `-> 0x004aadf0      mov   eax, 0x75a050
+            0x004aadf5      ret
+            0x004aadf6      nop
+            0x004aadf7      nop
+            0x004aadf8      nop
+            0x004aadf9      nop
+            0x004aadfa      nop
+            0x004aadfb      nop
+            0x004aadfc      nop
+            0x004aadfd      nop
+            0x004aadfe      nop
+            0x004aadff      nop
+            0x004aae00      int3
+            0x004aae01      int3
+            0x004aae02      int3
+            0x004aae03      int3
+            0x004aae04      int3
+            0x004aae05      int3
+            0x004aae06      int3
+            0x004aae07      int3
+            0x004aae08      int3
+            0x004aae09      int3
+            0x004aae0a      int3
+            0x004aae0b      int3
+            0x004aae0c      int3
+            0x004aae0d      int3
+            0x004aae0e      int3
+            0x004aae0f      int3
+            0x004aae10      int3
+            0x004aae11      int3
+            0x004aae12      int3
+            0x004aae13      int3
+            0x004aae14      int3
+            0x004aae15      int3
+            0x004aae16      int3
+            0x004aae17      int3
+            0x004aae18      int3
+            0x004aae19      int3
+            0x004aae1a      int3
+            0x004aae1b      int3
+            0x004aae1c      int3
+            0x004aae1d      int3
+            0x004aae1e      int3
+            0x004aae1f      int3
+            0x004aae20      xor   eax, eax
+            0x004aae22      ret
+            0x004aae23      nop
+            0x004aae24      nop
+            0x004aae25      nop
+            0x004aae26      nop
+            0x004aae27      nop
+            0x004aae28      nop
+            0x004aae29      nop
+            0x004aae2a      nop
+            0x004aae2b      nop
+            0x004aae2c      nop
+            0x004aae2d      nop
+            0x004aae2e      nop
+            0x004aae2f      nop
+            0x004aae30      int3
+            0x004aae31      int3
+            0x004aae32      int3
+            0x004aae33      int3
+            0x004aae34      int3
+            0x004aae35      int3
+            0x004aae36      int3
+            0x004aae37      int3
+            0x004aae38      int3
+            0x004aae39      int3
+            0x004aae3a      int3
+            0x004aae3b      int3
+            0x004aae3c      int3
+            0x004aae3d      int3
+            0x004aae3e      int3
+            0x004aae3f      int3
+            0x004aae40      mov   al, 0x01
+            0x004aae42      ret
+            0x004aae43      nop
+            0x004aae44      nop
+            0x004aae45      nop
+            0x004aae46      nop
+            0x004aae47      nop
+            0x004aae48      nop
+            0x004aae49      nop
+            0x004aae4a      nop
+            0x004aae4b      nop
+            0x004aae4c      nop
+            0x004aae4d      nop
+            0x004aae4e      nop
+            0x004aae4f      nop
+            0x004aae50      int3
+            0x004aae51      int3
+            0x004aae52      int3
+            0x004aae53      int3
+            0x004aae54      int3
+            0x004aae55      int3
+            0x004aae56      int3
+            0x004aae57      int3
+            0x004aae58      int3
+            0x004aae59      int3
+            0x004aae5a      int3
+            0x004aae5b      int3
+            0x004aae5c      int3
+            0x004aae5d      int3
+            0x004aae5e      int3
+            0x004aae5f      int3
+            0x004aae60      ret
+            0x004aae61      nop
+            0x004aae62      nop
+            0x004aae63      nop
+            0x004aae64      nop
+            0x004aae65      nop
+            0x004aae66      nop
+            0x004aae67      nop
+            0x004aae68      nop
+            0x004aae69      nop
+            0x004aae6a      nop
+            0x004aae6b      nop
+            0x004aae6c      nop
+            0x004aae6d      nop
+            0x004aae6e      nop
+            0x004aae6f      nop
+            0x004aae70      int3
+            0x004aae71      int3
+            0x004aae72      int3
+            0x004aae73      int3
+            0x004aae74      int3
+            0x004aae75      int3
+            0x004aae76      int3
+            0x004aae77      int3
+            0x004aae78      int3
+            0x004aae79      int3
+            0x004aae7a      int3
+            0x004aae7b      int3
+            0x004aae7c      int3
+            0x004aae7d      int3
+            0x004aae7e      int3
+            0x004aae7f      int3
+            0x004aae80      mov   eax, dword [esp+0x04]
+            0x004aae84      mov   ecx, dword [eax]
+            0x004aae86      mov   eax, dword [ecx]
+            0x004aae88      ret
+            0x004aae89      nop
+            0x004aae8a      nop
+            0x004aae8b      nop
+            0x004aae8c      nop
+            0x004aae8d      nop
+            0x004aae8e      nop
+            0x004aae8f      nop
+            0x004aae90      int3
+            0x004aae91      int3
+            0x004aae92      int3
+            0x004aae93      int3
+            0x004aae94      int3
+            0x004aae95      int3
+            0x004aae96      int3
+            0x004aae97      int3
+            0x004aae98      int3
+            0x004aae99      int3
+            0x004aae9a      int3
+            0x004aae9b      int3
+            0x004aae9c      int3
+            0x004aae9d      int3
+            0x004aae9e      int3
+            0x004aae9f      int3
+            0x0055a700      push  ecx
+            0x0055a701      push  esi
+            0x0055a702      mov   esi, ecx
+            0x0055a704      push  edi
+            0x0055a705      mov   eax, dword [esi]
+            0x0055a707      call  dword [eax+0xfc]                     ; 252
+            0x0055a70d      mov   edi, dword [esp+0x10]
+            0x0055a711      mov   edx, dword [esi]
+            0x0055a713      push  edi
+            0x0055a714      mov   ecx, esi
+            0x0055a716      call  dword [edx+0x1fc]                    ; 508
+            0x0055a71c      lea   eax, dword [esp+0x0a]
+            0x0055a720      push  0x01                                 ; 1
+            0x0055a722      lea   ecx, dword [esp+0x0c]
+            0x0055a726      push  eax
+            0x0055a727      lea   edx, dword [esi+0x64]
+            0x0055a72a      push  ecx
+            0x0055a72b      push  edx
+            0x0055a72c      push  edi
+            0x0055a72d      call  0x4050dd
+            0x0055a732      mov   ax, word [esp+0x1c]
+            0x0055a737      add   esp, 0x14
+            0x0055a73a      movsx ecx, ax
+            0x0055a73d      add   ecx, 0x40                            ; 64
+            0x0055a740      test  ecx, ecx
+        ,=< 0x0055a742      jle   0x55a76b
+        |   0x0055a744      mov   cx, word [esp+0x0a]
+        |   0x0055a749      movsx edx, cx
+        |   0x0055a74c      add   edx, 0x40                            ; 64
+        |   0x0055a74f      test  edx, edx
+       ,==< 0x0055a751      jle   0x55a76b
+       ||   0x0055a753      cmp   cx, 0x240                            ; 576
+      ,===< 0x0055a758      jnl   0x55a76b
+      |||   0x0055a75a      cmp   ax, 0x200                            ; 512
+     ,====< 0x0055a75e      jnl   0x55a76b
+     ||||   0x0055a760      mov   eax, dword [esi]
+     ||||   0x0055a762      push  edi
+     ||||   0x0055a763      mov   ecx, esi
+     ||||   0x0055a765      call  dword [eax+0x200]                    ; 512
+     ````-> 0x0055a76b      pop   edi
+            0x0055a76c      pop   esi
+            0x0055a76d      pop   ecx
+            0x0055a76e      ret   0x04
+            0x0055a771      nop
+            0x0055a772      nop
+            0x0055a773      nop
+            0x0055a774      nop
+            0x0055a775      nop
+            0x0055a776      nop
+            0x0055a777      nop
+            0x0055a778      nop
+            0x0055a779      nop
+            0x0055a77a      nop
+            0x0055a77b      nop
+            0x0055a77c      nop
+            0x0055a77d      nop
+            0x0055a77e      nop
+            0x0055a77f      nop
+            0x0055a780      int3
+            0x0055a781      int3
+            0x0055a782      int3
+            0x0055a783      int3
+            0x0055a784      int3
+            0x0055a785      int3
+            0x0055a786      int3
+            0x0055a787      int3
+            0x0055a788      int3
+            0x0055a789      int3
+            0x0055a78a      int3
+            0x0055a78b      int3
+            0x0055a78c      int3
+            0x0055a78d      int3
+            0x0055a78e      int3
+            0x0055a78f      int3
+            0x0055a790      int3
+            0x0055a791      int3
+            0x0055a792      int3
+            0x0055a793      int3
+            0x0055a794      int3
+            0x0055a795      int3
+            0x0055a796      int3
+            0x0055a797      int3
+            0x0055a798      int3
+            0x0055a799      int3
+            0x0055a79a      int3
+            0x0055a79b      int3
+            0x0055a79c      int3
+            0x0055a79d      int3
+            0x0055a79e      int3
+            0x0055a79f      int3
+            0x0055a7a0      sub   esp, 0x34
+            0x0055a7a3      push  esi
+            0x0055a7a4      mov   esi, ecx
+            0x0055a7a6      push  edi
+            0x0055a7a7      lea   eax, dword [esp+0x40]
+            0x0055a7ab      push  0x01                                 ; 1
+            0x0055a7ad      lea   ecx, dword [esp+0x0e]
+            0x0055a7b1      push  eax
+            0x0055a7b2      mov   eax, dword [esp+0x48]
+            0x0055a7b6      lea   edx, dword [esi+0x64]
+            0x0055a7b9      push  ecx
+            0x0055a7ba      push  edx
+            0x0055a7bb      push  eax
+            0x0055a7bc      call  0x4050dd
+            0x0055a7c1      mov   cx, word [esi+0x30]
+            0x0055a7c5      mov   dx, word [esi+0x2c]
+            0x0055a7c9      add   esp, 0x14
+            0x0055a7cc      push  ecx
+            0x0055a7cd      push  edx
+            0x0055a7ce      call  0x409bbf
+            0x0055a7d3      movsx ecx, word [esp+0x12]
+            0x0055a7d8      movsx eax, word [esp+0x48]
+            0x0055a7dd      add   esp, 0x08
+            0x0055a7e0      lea   edi, dword [ecx+0x40]
+            0x0055a7e3      mov   dword [esp+0x10], ecx
+            0x0055a7e7      lea   ecx, dword [esp+0x1c]
+            0x0055a7eb      lea   edx, dword [eax+0x40]
+            0x0055a7ee      invalid
+            0x0055a7ef      inc   esp
+

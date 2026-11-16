@@ -18,6 +18,7 @@
 .vtfixup [1] int32 fromunmanaged at VT_11
 .vtfixup [1] int32 fromunmanaged at VT_12
 .vtfixup [1] int32 fromunmanaged at VT_13
+.vtfixup [1] int32 fromunmanaged at VT_14
 
 .data VT_01 = int32(0)
 .data VT_02 = int32(0)
@@ -32,6 +33,7 @@
 .data VT_11 = int32(0)
 .data VT_12 = int32(0)
 .data VT_13 = int32(0)
+.data VT_14 = int32(0)
 
 .class private abstract auto ansi sealed DPlayBridge extends [mscorlib]System.Object
 {
@@ -140,6 +142,24 @@
         ldarg.3
         ldarg.s 4
         call int32 [Imp2Net]Imp2Net.Exports::Imp2CoCreateInstance(native int, native int, uint32, native int, native int)
+        ret
+    }
+
+    .method private hidebysig static int32 FwdInitialize(native int reserved) cil managed noinlining
+    {
+        ldarg.0
+        call int32 [Imp2Net]Imp2Net.WindowedMapStartup::Initialize(native int)
+        ret
+    }
+
+    .method public hidebysig static int32 modopt([mscorlib]System.Runtime.CompilerServices.CallConvStdcall)
+        Imp2Initialize(native int reserved) cil managed
+    {
+        .vtentry 14 : 1
+        .export [14] as Imp2Initialize
+        call void DPlayBridge::Ensure()
+        ldarg.0
+        call int32 DPlayBridge::FwdInitialize(native int)
         ret
     }
 

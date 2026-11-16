@@ -1,0 +1,38 @@
+        ,=< 0x00405ede      e9fd381500     jmp   0x5597e0
+        ,=< 0x0040374c      e95f761500     jmp   0x55adb0
+        ,=< 0x0040439f      e9dc751500     jmp   0x55b980
+0x00703b90  0x00401a14 0x0040374c                        ..@.L7@.
+0x00703e20  0x00401e56 0x0040439f                        V.@..C@.
+            0x00559830      56             push  esi
+            0x00559831      57             push  edi
+            0x00559832      8bf9           mov   edi, ecx
+            0x00559834      8b87f8030000   mov   eax, dword [edi+0x3f8]
+            0x0055983a      8db7f8030000   lea   esi, dword [edi+0x3f8]
+            0x00559840      85c0           test  eax, eax
+        ,=< 0x00559842      7412           jz    0x559856
+        |   0x00559844      8b0d0ca67500   mov   ecx, dword [0x75a60c] ; [0x75a60c:4]=0
+        |   0x0055984a      56             push  esi
+        |   0x0055984b      e8c878eaff     call  0x401118
+        |   0x00559850      c70600000000   mov   dword [esi], 0x00
+        `-> 0x00559856      a1e8c07500     mov   eax, dword [0x75c0e8] ; [0x75c0e8:4]=0
+            0x0055985b      85c0           test  eax, eax
+        ,=< 0x0055985d      742a           jz    0x559889
+        |   0x0055985f      3b05d8bc7500   cmp   eax, dword [0x75bcd8] ; [0x75bcd8:4]=0
+       ,==< 0x00559865      7422           jz    0x559889
+       ||   0x00559867      3b05dcbc7500   cmp   eax, dword [0x75bcdc] ; [0x75bcdc:4]=0
+      ,===< 0x0055986d      741a           jz    0x559889
+      |||   0x0055986f      8b0d0ca67500   mov   ecx, dword [0x75a60c] ; [0x75a60c:4]=0
+      |||   0x00559875      68e8c07500     push  0x75c0e8
+      |||   0x0055987a      e89978eaff     call  0x401118
+      |||   0x0055987f      c705e8c07500.  mov   dword [0x75c0e8], 0x00
+      ```-> 0x00559889      8b8f04040000   mov   ecx, dword [edi+0x404]
+            0x0055988f      85c9           test  ecx, ecx
+        ,=< 0x00559891      7405           jz    0x559898
+        |   0x00559893      8b01           mov   eax, dword [ecx]
+        |   0x00559895      ff501c         call  dword [eax+0x1c]      ; 28
+        `-> 0x00559898      8bcf           mov   ecx, edi
+            0x0055989a      c78704040000.  mov   dword [edi+0x404], 0x00
+            0x005598a4      e8baf5eaff     call  0x408e63
+            0x005598a9      8b0d00077600   mov   ecx, dword [0x760700] ; [0x760700:4]=0
+            0x005598af      e8             invalid
+

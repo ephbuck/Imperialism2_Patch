@@ -1,0 +1,217 @@
+        :   0x005597e0      56             push  esi
+        :   0x005597e1      8bf1           mov   esi, ecx
+        :   0x005597e3      e88781eaff     call  0x40196f
+        :   0x005597e8      f644240801     test  byte [esp+0x08], 0x01
+       ,==< 0x005597ed      7409           jz    0x5597f8
+       |:   0x005597ef      56             push  esi
+       |:   0x005597f0      e8ecdb1400     call  0x6a73e1
+       |:   0x005597f5      83c404         add   esp, 0x04
+       `--> 0x005597f8      8bc6           mov   eax, esi
+        :   0x005597fa      5e             pop   esi
+        :   0x005597fb      c20400         ret   0x04
+        :   0x005597fe      90             nop
+        :   0x005597ff      90             nop
+        :   0x00559800      cc             int3
+        :   0x00559801      cc             int3
+        :   0x00559802      cc             int3
+        :   0x00559803      cc             int3
+        :   0x00559804      cc             int3
+        :   0x00559805      cc             int3
+        :   0x00559806      cc             int3
+        :   0x00559807      cc             int3
+        :   0x00559808      cc             int3
+        :   0x00559809      cc             int3
+        :   0x0055980a      cc             int3
+        :   0x0055980b      cc             int3
+        :   0x0055980c      cc             int3
+        :   0x0055980d      cc             int3
+        :   0x0055980e      cc             int3
+        :   0x0055980f      cc             int3
+        `=< 0x00559810      e999bfeaff     jmp   0x4057ae
+            0x00559815      90             nop
+            0x00559816      90             nop
+            0x00559817      90             nop
+            0x00559818      90             nop
+            0x00559819      90             nop
+            0x0055981a      90             nop
+            0x0055981b      90             nop
+            0x0055981c      90             nop
+            0x0055981d      90             nop
+            0x0055981e      90             nop
+            0x0055981f      90             nop
+            0x00559820      cc             int3
+            0x00559821      cc             int3
+            0x00559822      cc             int3
+            0x00559823      cc             int3
+            0x00559824      cc             int3
+            0x00559825      cc             int3
+            0x00559826      cc             int3
+            0x00559827      cc             int3
+            0x00559828      cc             int3
+            0x00559829      cc             int3
+            0x0055982a      cc             int3
+            0x0055982b      cc             int3
+            0x0055982c      cc             int3
+            0x0055982d      cc             int3
+            0x0055982e      cc             int3
+            0x0055982f      cc             int3
+            0x00559830      56             push  esi
+            0x00559831      57             push  edi
+            0x00559832      8bf9           mov   edi, ecx
+            0x00559834      8b             invalid
+        :   0x0055adb0      56             push  esi
+        :   0x0055adb1      8bf1           mov   esi, ecx
+        :   0x0055adb3      e84f65eaff     call  0x401307
+        :   0x0055adb8      f644240801     test  byte [esp+0x08], 0x01
+       ,==< 0x0055adbd      7409           jz    0x55adc8
+       |:   0x0055adbf      56             push  esi
+       |:   0x0055adc0      e81cc61400     call  0x6a73e1
+       |:   0x0055adc5      83c404         add   esp, 0x04
+       `--> 0x0055adc8      8bc6           mov   eax, esi
+        :   0x0055adca      5e             pop   esi
+        :   0x0055adcb      c20400         ret   0x04
+        :   0x0055adce      90             nop
+        :   0x0055adcf      90             nop
+        :   0x0055add0      cc             int3
+        :   0x0055add1      cc             int3
+        :   0x0055add2      cc             int3
+        :   0x0055add3      cc             int3
+        :   0x0055add4      cc             int3
+        :   0x0055add5      cc             int3
+        :   0x0055add6      cc             int3
+        :   0x0055add7      cc             int3
+        :   0x0055add8      cc             int3
+        :   0x0055add9      cc             int3
+        :   0x0055adda      cc             int3
+        :   0x0055addb      cc             int3
+        :   0x0055addc      cc             int3
+        :   0x0055addd      cc             int3
+        :   0x0055adde      cc             int3
+        :   0x0055addf      cc             int3
+        `=< 0x0055ade0      e9c9a9eaff     jmp   0x4057ae
+            0x0055ade5      90             nop
+            0x0055ade6      90             nop
+            0x0055ade7      90             nop
+            0x0055ade8      90             nop
+            0x0055ade9      90             nop
+            0x0055adea      90             nop
+            0x0055adeb      90             nop
+            0x0055adec      90             nop
+            0x0055aded      90             nop
+            0x0055adee      90             nop
+            0x0055adef      90             nop
+            0x0055adf0      cc             int3
+            0x0055adf1      cc             int3
+            0x0055adf2      cc             int3
+            0x0055adf3      cc             int3
+            0x0055adf4      cc             int3
+            0x0055adf5      cc             int3
+            0x0055adf6      cc             int3
+            0x0055adf7      cc             int3
+            0x0055adf8      cc             int3
+            0x0055adf9      cc             int3
+            0x0055adfa      cc             int3
+            0x0055adfb      cc             int3
+            0x0055adfc      cc             int3
+            0x0055adfd      cc             int3
+            0x0055adfe      cc             int3
+            0x0055adff      cc             int3
+            0x0055ae00      83ec14         sub   esp, 0x14
+            0x0055ae03      8b             invalid
+            0x0055ae04      44             inc   esp
+        :   0x0055b980      56             push  esi
+        :   0x0055b981      8bf1           mov   esi, ecx
+        :   0x0055b983      e8be88eaff     call  0x404246
+        :   0x0055b988      f644240801     test  byte [esp+0x08], 0x01
+       ,==< 0x0055b98d      7409           jz    0x55b998
+       |:   0x0055b98f      56             push  esi
+       |:   0x0055b990      e84cba1400     call  0x6a73e1
+       |:   0x0055b995      83c404         add   esp, 0x04
+       `--> 0x0055b998      8bc6           mov   eax, esi
+        :   0x0055b99a      5e             pop   esi
+        :   0x0055b99b      c20400         ret   0x04
+        :   0x0055b99e      90             nop
+        :   0x0055b99f      90             nop
+        :   0x0055b9a0      cc             int3
+        :   0x0055b9a1      cc             int3
+        :   0x0055b9a2      cc             int3
+        :   0x0055b9a3      cc             int3
+        :   0x0055b9a4      cc             int3
+        :   0x0055b9a5      cc             int3
+        :   0x0055b9a6      cc             int3
+        :   0x0055b9a7      cc             int3
+        :   0x0055b9a8      cc             int3
+        :   0x0055b9a9      cc             int3
+        :   0x0055b9aa      cc             int3
+        :   0x0055b9ab      cc             int3
+        :   0x0055b9ac      cc             int3
+        :   0x0055b9ad      cc             int3
+        :   0x0055b9ae      cc             int3
+        :   0x0055b9af      cc             int3
+        `=< 0x0055b9b0      e9f99deaff     jmp   0x4057ae
+            0x0055b9b5      90             nop
+            0x0055b9b6      90             nop
+            0x0055b9b7      90             nop
+            0x0055b9b8      90             nop
+            0x0055b9b9      90             nop
+            0x0055b9ba      90             nop
+            0x0055b9bb      90             nop
+            0x0055b9bc      90             nop
+            0x0055b9bd      90             nop
+            0x0055b9be      90             nop
+            0x0055b9bf      90             nop
+            0x0055b9c0      cc             int3
+            0x0055b9c1      cc             int3
+            0x0055b9c2      cc             int3
+            0x0055b9c3      cc             int3
+            0x0055b9c4      cc             int3
+            0x0055b9c5      cc             int3
+            0x0055b9c6      cc             int3
+            0x0055b9c7      cc             int3
+            0x0055b9c8      cc             int3
+            0x0055b9c9      cc             int3
+            0x0055b9ca      cc             int3
+            0x0055b9cb      cc             int3
+            0x0055b9cc      cc             int3
+            0x0055b9cd      cc             int3
+            0x0055b9ce      cc             int3
+            0x0055b9cf      cc             int3
+            0x0055b9d0      b8b8387000     mov   eax, 0x7038b8
+0x00703bac  0x004052b8                                   .R@.
+0x00703e3c  0x004052b8                                   .R@.
+            0x005598a4      e8baf5eaff     call  0x408e63
+            0x005598a9      8b0d00077600   mov   ecx, dword [0x760700] ; [0x760700:4]=0
+            0x005598af      e8bdd3eaff     call  0x406c71
+            0x005598b4      5f             pop   edi
+            0x005598b5      5e             pop   esi
+            0x005598b6      c3             ret
+            0x005598b7      90             nop
+            0x005598b8      90             nop
+            0x005598b9      90             nop
+            0x005598ba      90             nop
+            0x005598bb      90             nop
+            0x005598bc      90             nop
+            0x005598bd      90             nop
+            0x005598be      90             nop
+            0x005598bf      90             nop
+            0x005598c0      cc             int3
+            0x005598c1      cc             int3
+            0x005598c2      cc             int3
+            0x005598c3      cc             int3
+            0x005598c4      cc             int3
+            0x005598c5      cc             int3
+            0x005598c6      cc             int3
+            0x005598c7      cc             int3
+            0x005598c8      cc             int3
+            0x005598c9      cc             int3
+            0x005598ca      cc             int3
+            0x005598cb      cc             int3
+            0x005598cc      cc             int3
+            0x005598cd      cc             int3
+            0x005598ce      cc             int3
+            0x005598cf      cc             int3
+            0x005598d0      cc             int3
+            0x005598d1      cc             int3
+            0x005598d2      cc             int3
+            0x005598d3      cc             int3
+

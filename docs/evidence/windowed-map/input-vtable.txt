@@ -1,0 +1,169 @@
+0x00703a2c  0x004044b7 0x004063f7 0x004057b3 0x00406186  .D@..c@..W@..a@.
+0x00703a3c  0x0040243c 0x00408ab2 0x0040a7bd 0x004080e9  <$@...@...@...@.
+0x00703a4c  0x00408f35 0x00408f08 0x004091fb 0x00405d5d  5.@...@...@.]]@.
+0x00703a5c  0x004099cb 0x0040478c 0x00407784 0x004060eb  ..@..G@..w@..`@.
+0x00703a6c  0x00408a8a 0x0040239c 0x00404ba6 0x00407928  ..@..#@..K@.(y@.
+0x00703a7c  0x00401bea 0x00408fa3 0x0040a08d 0x00409930  ..@...@...@.0.@.
+0x00703a8c  0x00408fe9 0x00409d81 0x004016db 0x00409aa7  ..@...@...@...@.
+0x00703a9c  0x00401898                                   ..@.
+        ,=< 0x00409930      e9bb780900     jmp   0x4a11f0
+        ,=< 0x00408fe9      e922820900     jmp   0x4a1210
+        ,=< 0x00409d81      e9aa740900     jmp   0x4a1230
+            0x004a0f40      a1d89d7500     mov   eax, dword [0x759dd8] ; [0x759dd8:4]=0
+            0x004a0f45      85c0           test  eax, eax
+        ,=< 0x004a0f47      7512           jnz   0x4a0f5b
+        |   0x004a0f49      6878070000     push  0x778                 ; 1912
+        |   0x004a0f4e      683c7a7400     push  str.D:_Epsilon_McAppUI.cpp ; 0x747a3c ; "D:\Epsilon\McAppUI.cpp"
+        |   0x004a0f53      e8ca42f6ff     call  0x405222
+        |   0x004a0f58      83c408         add   esp, 0x08
+        `-> 0x004a0f5b      e8a492f6ff     call  0x40a204
+            0x004a0f60      8b4c2404       mov   ecx, dword [esp+0x04]
+            0x004a0f64      8b510c         mov   edx, dword [ecx+0x0c]
+            0x004a0f67      52             push  edx
+            0x004a0f68      8b5108         mov   edx, dword [ecx+0x08]
+            0x004a0f6b      52             push  edx
+            0x004a0f6c      8b5104         mov   edx, dword [ecx+0x04]
+            0x004a0f6f      8b09           mov   ecx, dword [ecx]
+            0x004a0f71      52             push  edx
+            0x004a0f72      8b5004         mov   edx, dword [eax+0x04]
+            0x004a0f75      51             push  ecx
+            0x004a0f76      52             push  edx
+            0x004a0f77      ff1520be7600   call  dword [sym.imp.GDI32.dll_Rectangle] ; 0x76be20 ; "X\xe06" ; BOOL Rectangle(HDC hdc, int nLeftRect, int nTopRect, int nRightRect, int nBottomRect)
+            0x004a0f7d      c20400         ret   0x04
+            0x004a0f80      cc             int3
+            0x004a0f81      cc             int3
+            0x004a0f82      cc             int3
+            0x004a0f83      cc             int3
+            0x004a0f84      cc             int3
+            0x004a0f85      cc             int3
+            0x004a0f86      cc             int3
+            0x004a0f87      cc             int3
+            0x004a0f88      cc             int3
+            0x004a0f89      cc             int3
+            0x004a0f8a      cc             int3
+            0x004a0f8b      cc             int3
+            0x004a0f8c      cc             int3
+            0x004a0f8d      cc             int3
+            0x004a0f8e      cc             int3
+            0x004a0f8f      cc             int3
+            0x004a0f90      a1dc9d7500     mov   eax, dword [0x759ddc] ; [0x759ddc:4]=0
+            0x004a0f95      85c0           test  eax, eax
+        ,=< 0x004a0f97      7512           jnz   0x4a0fab
+        |   0x004a0f99      6880070000     push  0x780                 ; 1920
+        |   0x004a0f9e      683c7a7400     push  str.D:_Epsilon_McAppUI.cpp ; 0x747a3c ; "D:\Epsilon\McAppUI.cpp"
+        |   0x004a0fa3      e87a42f6ff     call  0x405222
+        |   0x004a0fa8      83c408         add   esp, 0x08
+        `-> 0x004a0fab      c20400         ret   0x04
+            0x004a0fae      90             nop
+            0x004a0faf      90             nop
+            0x004a0fb0      cc             int3
+            0x004a0fb1      cc             int3
+            0x004a0fb2      cc             int3
+            0x004a0fb3      cc             int3
+            0x004a0fb4      cc             int3
+            0x004a0fb5      cc             int3
+            0x004a0fb6      cc             int3
+            0x004a0fb7      cc             int3
+            0x004a0fb8      cc             int3
+            0x004a0fb9      cc             int3
+            0x004a0fba      cc             int3
+            0x004a0fbb      cc             int3
+            0x004a0fbc      cc             int3
+            0x004a0fbd      cc             int3
+            0x004a0fbe      cc             int3
+            0x004a0fbf      cc             int3
+            0x004a0fc0      a1e09d7500     mov   eax, dword [0x759de0] ; [0x759de0:4]=0
+            0x004a0fc5      83ec10         sub   esp, 0x10
+            0x004a0fc8      85c0           test  eax, eax
+            0x004a0fca      56             push  esi
+            0x004a0fcb      8bf1           mov   esi, ecx
+        ,=< 0x004a0fcd      7512           jnz   0x4a0fe1
+        |   0x004a0fcf      6888070000     push  0x788                 ; 1928
+        |   0x004a0fd4      683c7a7400     push  str.D:_Epsilon_McAppUI.cpp ; 0x747a3c ; "D:\Epsilon\McAppUI.cpp"
+        |   0x004a0fd9      e84442f6ff     call  0x405222
+        |   0x004a0fde      83c408         add   esp, 0x08
+        `-> 0x004a0fe1      8b06           mov   eax, dword [esi]
+            0x004a0fe3      8d4c2404       lea   ecx, dword [esp+0x04]
+            0x004a0fe7      51             push  ecx
+            0x004a0fe8      8bce           mov   ecx, esi
+            0x004a0fea      ff9060010000   call  dword [eax+0x160]     ; 352
+            0x004a0ff0      5e             pop   esi
+            0x004a0ff1      83c410         add   esp, 0x10
+            0x004a0ff4      c3             ret
+            0x004a0ff5      90             nop
+            0x004a0ff6      90             nop
+            0x004a0ff7      90             nop
+            0x004a0ff8      90             nop
+            0x004a0ff9      90             nop
+            0x004a0ffa      90             nop
+            0x004a0ffb      90             nop
+            0x004a0ffc      90             nop
+            0x004a0ffd      90             nop
+            0x004a0ffe      90             nop
+            0x004a0fff      90             nop
+            0x004a1000      cc             int3
+            0x004a1001      cc             int3
+            0x004a1002      cc             int3
+            0x004a1003      cc             int3
+            0x004a1004      cc             int3
+            0x004a1005      cc             int3
+            0x004a1006      cc             int3
+            0x004a1007      cc             int3
+            0x004a1008      cc             int3
+            0x004a1009      cc             int3
+            0x004a100a      cc             int3
+            0x004a100b      cc             int3
+            0x004a100c      cc             int3
+            0x004a100d      cc             int3
+            0x004a100e      cc             int3
+            0x004a100f      cc             int3
+            0x004a1010      8b4144         mov   eax, dword [ecx+0x44]
+            0x004a1013      56             push  esi
+            0x004a1014      85c0           test  eax, eax
+        ,=< 0x004a1016      7504           jnz   0x4a101c
+        |   0x004a1018      33f6           xor   esi, esi
+       ,==< 0x004a101a      eb03           jmp   0x4a101f
+       |`-> 0x004a101c      8b7004         mov   esi, dword [eax+0x04]
+       `--> 0x004a101f      85f6           test  esi, esi
+        ,=< 0x004a1021      7506           jnz   0x4a1029
+        |   0x004a1023      33c0           xor   eax, eax
+        |   0x004a1025      33c9           xor   ecx, ecx
+       ,==< 0x004a1027      eb09           jmp   0x4a1032
+       |`-> 0x004a1029      8bc6           mov   eax, esi
+       |    0x004a102b      8b36           mov   esi, dword [esi]
+       |    0x004a102d      8b4008         mov   eax, dword [eax+0x08]
+       |    0x004a1030      8bc8           mov   ecx, eax
+       `--> 0x004a1032      85c0           test  eax, eax
+        ,=< 0x004a1034      741f           jz    0x4a1055
+       .--> 0x004a1036      8b01           mov   eax, dword [ecx]
+       :|   0x004a1038      ff90a0000000   call  dword [eax+0xa0]      ; 160
+       :|   0x004a103e      85f6           test  esi, esi
+      ,===< 0x004a1040      7506           jnz   0x4a1048
+      |:|   0x004a1042      33c0           xor   eax, eax
+      |:|   0x004a1044      33c9           xor   ecx, ecx
+     ,====< 0x004a1046      eb09           jmp   0x4a1051
+     |`---> 0x004a1048      8bc6           mov   eax, esi
+     | :|   0x004a104a      8b36           mov   esi, dword [esi]
+     | :|   0x004a104c      8b4008         mov   eax, dword [eax+0x08]
+     | :|   0x004a104f      8bc8           mov   ecx, eax
+     `----> 0x004a1051      85c0           test  eax, eax
+       `==< 0x004a1053      75e1           jnz   0x4a1036
+        `-> 0x004a1055      5e             pop   esi
+            0x004a1056      c3             ret
+            0x004a1057      90             nop
+            0x004a1058      90             nop
+            0x004a1059      90             nop
+            0x004a105a      90             nop
+            0x004a105b      90             nop
+            0x004a105c      90             nop
+            0x004a105d      90             nop
+            0x004a105e      90             nop
+            0x004a105f      90             nop
+        ,=< 0x00406be5      e966930900     jmp   0x49ff50
+        ,=< 0x0040a78b      e920570900     jmp   0x49feb0
+        ,=< 0x00401fd2      e959842000     jmp   0x60a430
+        ,=< 0x004024cd      e92e060300     jmp   0x432b00
+        ,=< 0x00406028      e953ad0900     jmp   0x4a0d80
+        ,=< 0x004094ee      e90da60100     jmp   0x423b00
+        ,=< 0x004044b7      e964f60100     jmp   0x423b20
+
